@@ -99,7 +99,6 @@ class VersionTest {
     void testGetUserAgent_ExampleFormat() {
         String userAgent = Version.getUserAgent();
 
-        // Example: agentscope-java/1.0.12-SNAPSHOT; java/17.0.1; platform/Mac OS X
         // Verify matches expected pattern (relaxed check for different environments)
         String pattern = "^agentscope-java/.+; java/[0-9.]+; platform/.+$";
         Assertions.assertTrue(

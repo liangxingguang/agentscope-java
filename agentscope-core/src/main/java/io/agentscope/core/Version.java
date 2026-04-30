@@ -35,8 +35,6 @@ public final class Version {
      *
      * <p>Format: {@code agentscope-java/{version}; java/{java_version}; platform/{os}}
      *
-     * <p>Example: {@code agentscope-java/1.0.12-SNAPSHOT; java/17.0.1; platform/Mac OS X}
-     *
      * @return unified User-Agent string
      */
     public static String getUserAgent() {
