@@ -24,7 +24,7 @@ package io.agentscope.core;
 public final class Version {
 
     /** AgentScope Java version */
-    public static final String VERSION = "1.0.12";
+    public static final String VERSION = "1.0.13-SNAPSHOT";
 
     private Version() {
         // Utility class - prevent instantiation
