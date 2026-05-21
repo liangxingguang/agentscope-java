@@ -101,13 +101,7 @@ public class OpenAIChatFormatter extends OpenAIBaseFormatter {
             request.setPresencePenalty(presencePenalty);
         }
 
-        // Apply max tokens
-        Integer maxTokens =
-                getOptionOrDefault(options, defaultOptions, GenerateOptions::getMaxTokens);
-        if (maxTokens != null) {
-            request.setMaxCompletionTokens(maxTokens);
-            request.setMaxTokens(maxTokens);
-        }
+        applyMaxTokens(request, options, defaultOptions);
 
         // Apply seed
         Long seed = getOptionOrDefault(options, defaultOptions, GenerateOptions::getSeed);
@@ -118,9 +112,32 @@ public class OpenAIChatFormatter extends OpenAIBaseFormatter {
             request.setSeed(seed.intValue());
         }
 
+        // Apply parallel tool calls
+        Boolean parallelToolCalls =
+                getOptionOrDefault(options, defaultOptions, GenerateOptions::getParallelToolCalls);
+        if (parallelToolCalls != null) {
+            request.setParallelToolCalls(parallelToolCalls);
+        }
+
         // Apply additional body params (must be last to allow overriding)
         applyAdditionalBodyParams(request, defaultOptions);
         applyAdditionalBodyParams(request, options);
+    }
+
+    protected void applyMaxTokens(
+            OpenAIRequest request, GenerateOptions options, GenerateOptions defaultOptions) {
+        Integer maxTokens =
+                getOptionOrDefault(options, defaultOptions, GenerateOptions::getMaxTokens);
+        if (maxTokens != null) {
+            request.setMaxTokens(maxTokens);
+        }
+
+        Integer maxCompletionTokens =
+                getOptionOrDefault(
+                        options, defaultOptions, GenerateOptions::getMaxCompletionTokens);
+        if (maxCompletionTokens != null) {
+            request.setMaxCompletionTokens(maxCompletionTokens);
+        }
     }
 
     @Override
