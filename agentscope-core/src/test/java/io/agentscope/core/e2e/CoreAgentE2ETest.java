@@ -41,11 +41,10 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Consolidated E2E tests for core agent functionality.
  *
  * <p>Tests basic ReAct workflow, conversation flow, streaming, memory management, and
- * fundamental tool calling across all available model providers (OpenAI Native, DashScope
- * Compatible, DashScope Native).
+ * fundamental tool calling across all available core-owned model providers.
  *
- * <p><b>Requirements:</b> OPENAI_API_KEY and/or DASHSCOPE_API_KEY environment variables
- * must be set. Tests are dynamically enabled based on available API keys.
+ * <p><b>Requirements:</b> Provider-specific API keys must be set. Tests are dynamically enabled
+ * based on available API keys.
  */
 @Tag("e2e")
 @ExtendWith(E2ETestCondition.class)
@@ -117,7 +116,7 @@ class CoreAgentE2ETest {
                 "Should remember favorite color from previous turn for " + provider.getModelName());
 
         // Verify memory growth
-        int memorySize = agent.getMemory().getMessages().size();
+        int memorySize = agent.getAgentState().getContext().size();
         assertTrue(
                 memorySize >= 4,
                 "Memory should contain conversation history for " + provider.getModelName());
@@ -164,7 +163,7 @@ class CoreAgentE2ETest {
         assertNotNull(response3, "Should respond to thanks");
 
         // Verify all interactions are in memory
-        List<Msg> allMessages = agent.getMemory().getMessages();
+        List<Msg> allMessages = agent.getAgentState().getContext();
         assertTrue(allMessages.size() >= 3, "Should have at least 3 user messages in memory");
 
         System.out.println("Final memory size: " + allMessages.size() + " messages");
@@ -259,8 +258,7 @@ class CoreAgentE2ETest {
         // At least one provider should be enabled
         assertTrue(
                 enabledBasicProviders > 0,
-                "At least one basic provider should be enabled (check OPENAI_API_KEY or"
-                        + " DASHSCOPE_API_KEY)");
+                "At least one basic provider should be enabled (check core provider API keys)");
 
         System.out.println("✓ Provider configuration verified");
     }

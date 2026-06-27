@@ -49,8 +49,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>Tests multiple tool calls, parallel execution, hook lifecycle, multimodal tool results,
  * and tool error handling across all available model providers that support tools.
  *
- * <p><b>Requirements:</b> OPENAI_API_KEY and/or DASHSCOPE_API_KEY environment variables
- * must be set. Tests are dynamically enabled based on available API keys and model capabilities.
+ * <p><b>Requirements:</b> Provider-specific API keys must be set. Tests are dynamically enabled
+ * based on available API keys and model capabilities.
  */
 @Tag("e2e")
 @Tag("tools")
@@ -244,7 +244,7 @@ class ToolSystemE2ETest {
         assertNotNull(response, "Response should not be null");
 
         // Verify memory structure: user message + tool use + tool result + final answer
-        List<Msg> memory = agent.getMemory().getMessages();
+        List<Msg> memory = agent.getAgentState().getContext();
         assertTrue(
                 memory.size() >= 4,
                 "Memory should contain at least 4 messages (user, tool use, tool result, final"
