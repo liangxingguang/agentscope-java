@@ -371,7 +371,7 @@ ReActAgent agent =
                 .sysPrompt("You are a helpful assistant.")
                 // Resolved by ModelRegistry; reads DASHSCOPE_API_KEY automatically.
                 // Switch providers by using "openai:gpt-5.5" / "anthropic:claude-sonnet-4-5"
-                // / "gemini:gemini-2.0-flash" / "ollama:llama3".
+                // / "deepseek:deepseek-v4-flash" / "gemini:gemini-2.0-flash" / "ollama:llama3".
                 .model("dashscope:qwen-plus")
                 .toolkit(new Toolkit())
                 .build();
@@ -429,7 +429,7 @@ ReActAgent agent =
 ::::
 
 :::{tip}
-The `ModelRegistry` string form (`<provider>:<model>`) requires the matching model extension module on the classpath. It supports `dashscope` / `openai` / `anthropic` / `gemini` / `ollama` and reads the matching API key (`DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) from the environment. For long-running scenarios that also need a workspace, session persistence, memory compaction, subagents, and so on, use [`HarnessAgent`](../harness/architecture.md) — it is a thin wrapper around `ReActAgent` with a largely identical builder.
+The `ModelRegistry` string form (`<provider>:<model>`) requires the matching model extension module on the classpath. It supports `dashscope` / `openai` / `deepseek` / `anthropic` / `gemini` / `ollama` and reads the matching API key (`DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) from the environment. For long-running scenarios that also need a workspace, session persistence, memory compaction, subagents, and so on, use [`HarnessAgent`](../harness/architecture.md) — it is a thin wrapper around `ReActAgent` with a largely identical builder.
 :::
 
 ### Builder fields
@@ -729,7 +729,7 @@ for (var tc : externalEvent.getToolCalls()) {
 }
 ```
 
-**3. Resume the agent** — feed the results back as the next `call`'s input message. The results are injected into the agent context and reasoning continues from where it paused. See `agentscope-examples/documentation/.../hitl/InterruptionExample.java` for a complete walkthrough.
+**3. Resume the agent** — feed the results back as the next `call`'s input message. After the results are validated, they are injected into the agent context and the agent emits `ExternalExecutionResultEvent`; its `getReplyId()` matches the earlier `RequireExternalExecutionEvent#getReplyId()`. Reasoning then continues from where it paused.
 
 :::{tip}
 Use `streamEvents` when building interactive UIs — it lets you detect pauses in real time and prompt the user immediately. Use `call` for programmatic flows that handle events automatically. Complete runnable examples: `agentscope-examples/documentation/.../hitl/PermissionHITLExample.java`.
@@ -1107,6 +1107,7 @@ All events extend `AgentEvent` (`io.agentscope.core.event`), which exposes the c
 | `getCreatedAt()` | `String` | ISO 8601 timestamp |
 | `getType()` | `AgentEventType` | Event type enum |
 | `getSource()` | `String` | Source path identifying the originating agent. `null` for top-level agent events; a slash-separated path (e.g. `"main/researcher"`) for events forwarded from a subagent |
+| `getMetadata()` | `Map<String, Object>` | Optional key/value bag. Remote subagent forwards also set `taskId` (`AgentEvent.METADATA_TASK_ID`) to the harness / Agent Protocol task id when events are task-backed |
 
 Events are grouped below; unless noted otherwise, every event also carries `getReplyId()` linking it to the message being assembled.
 
@@ -1216,9 +1217,26 @@ Events are grouped below; unless noted otherwise, every event also carries `getR
 
     **RequireExternalExecutionEvent** — agent pauses for external execution.
 
-    **UserConfirmResultEvent** — user provides confirmation results (input event); carries `List<ConfirmResult>`.
+    | Method | Type | Description |
+    |--------|------|-------------|
+    | `getReplyId()` | `String` | Reply message ID |
+    | `getToolCalls()` | `List<ToolUseBlock>` | Tool calls awaiting external execution |
 
-    **ExternalExecutionResultEvent** — external system returns execution results (input event); carries `List<ToolResultBlock>`.
+    **UserConfirmResultEvent** — emitted when a later `call()` resumes a paused permission HITL request.
+    It carries one or more `ConfirmResult`s, and its `replyId` matches the earlier `RequireUserConfirmEvent`.
+
+    | Method | Type | Description |
+    |--------|------|-------------|
+    | `getReplyId()` | `String` | Reply ID of the correlated `RequireUserConfirmEvent` |
+    | `getConfirmResults()` | `List<ConfirmResult>` | Confirmation results accepted for this resume |
+
+    **ExternalExecutionResultEvent** — emitted when a later `call()` resumes a paused external-execution request.
+    It carries one or more `ToolResultBlock`s, and its `replyId` matches the earlier `RequireExternalExecutionEvent`.
+
+    | Method | Type | Description |
+    |--------|------|-------------|
+    | `getReplyId()` | `String` | Reply ID of the correlated `RequireExternalExecutionEvent` |
+    | `getToolResults()` | `List<ToolResultBlock>` | External execution results accepted for this resume |
 
     **AllToolsDeniedEvent** — the user denied all tool calls from the most recent reasoning step via HITL confirmation. This event is emitted through the `onActing` middleware chain, allowing middlewares to emit a `RequestStopEvent` to stop the agent. If no middleware handles it, the agent continues to the next reasoning iteration (backward compatible).
 
@@ -1381,7 +1399,7 @@ ReActAgent agent =
                 .build();
 ```
 
-`middleware(...)` (singular) appends one; `middlewares(...)` accepts `List<? extends MiddlewareBase>`. Hooks not implemented by a middleware are skipped at zero cost.
+`middleware(...)` (singular) adds one; `middlewares(...)` accepts `List<? extends MiddlewareBase>`. Hooks not implemented by a middleware are skipped at zero cost.
 
 ## Built-in middlewares
 
@@ -1542,12 +1560,23 @@ Things to keep in mind:
 
 ### Execution order
 
-Onion hooks (`onAgent`, `onReasoning`, `onActing`, `onModelCall`) — **the first middleware in the list is outermost**:
+Onion hooks (`onAgent`, `onReasoning`, `onActing`, `onModelCall`) are ordered by `MiddlewareBase.order()` — **higher values are outermost**. The default order is `1`; middlewares with the same order retain their builder registration order:
 
 ```
-middlewares = [mw1, mw2]
+middlewares = [mw1(order=2), mw2(order=1)]
 // Order:
 // mw1 pre → mw2 pre → inner → mw2 post → mw1 post
+```
+
+Override `order()` to move a custom middleware relative to the default order. For example, an order of `0` runs inside middleware that keeps the default order of `1`:
+
+```java
+MiddlewareBase lowerPriority = new MiddlewareBase() {
+    @Override
+    public int order() {
+        return 0;
+    }
+};
 ```
 
 For streaming / event-emitting hooks, the inner middleware sees each emitted event first:
@@ -1827,7 +1856,7 @@ Other provider artifacts follow the same pattern: `agentscope-extensions-model-o
 
 ### String model id
 
-For simple non-Spring applications, use a `ModelRegistry` string id such as `dashscope:qwen-plus` or `openai:gpt-4.1-mini`. Add the matching model extension module, set the provider's standard environment variable such as `DASHSCOPE_API_KEY` or `OPENAI_API_KEY`, and pass the id directly to the agent:
+For simple non-Spring applications, use a `ModelRegistry` string id such as `dashscope:qwen-plus`, `openai:gpt-4.1-mini`, or `deepseek:deepseek-v4-flash`. Add the matching model extension module, set the provider's standard environment variable such as `DASHSCOPE_API_KEY`, `OPENAI_API_KEY`, or `DEEPSEEK_API_KEY`, and pass the id directly to the agent:
 
 ```java
 ReActAgent agent =
@@ -1837,7 +1866,7 @@ ReActAgent agent =
                 .build();
 ```
 
-The extension module is discovered through Java SPI. The model provider reads its standard environment variables such as `DASHSCOPE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. Ollama reads `OLLAMA_BASE_URL` when present and otherwise defaults to the local Ollama endpoint.
+The extension module is discovered through Java SPI. The model provider reads its standard environment variables such as `DASHSCOPE_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GLM_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. Ollama reads `OLLAMA_BASE_URL` when present and otherwise defaults to the local Ollama endpoint.
 
 ### Explicit model builder
 
@@ -2477,7 +2506,7 @@ Each rule has the fields below. When the engine evaluates a rule, it calls the t
 
 - **`toolName` · `String` · *required*** — The tool name the rule applies to: `todo_write` (built-in) or any custom tool name.
 
-- **`ruleContent` · `String | null` · *required*** — Match pattern — semantics depend on the tool, interpreted by the tool's `matchRule()`. `null` means the rule matches every invocation of that tool.
+- **`ruleContent` · `String | null` · *optional*** — Match pattern — semantics depend on the tool, interpreted by the tool's `matchRule()`. `null` means the rule matches every invocation of that tool.
 
 - **`behavior` · `PermissionBehavior` · *required*** — `ALLOW`, `DENY`, `ASK`, or `PASSTHROUGH`
 
@@ -2723,6 +2752,11 @@ Msg resumeMsg =
                 .build();
 agent.call(List.of(resumeMsg)).block();
 ```
+
+If the resume is sent with `streamEvents(List.of(resumeMsg))`, the stream includes a
+`UserConfirmResultEvent` before the resumed tool execution. Use its `replyId` to associate
+the accepted results with the earlier `RequireUserConfirmEvent`; the event contains only
+the confirmations included in that resume call.
 
 Comparison of the two modes:
 
@@ -2995,7 +3029,7 @@ public class WebSearchTool extends ToolBase {
 
 ### External execution tools
 
-External-execution tools delegate the actual work outside the agent runtime — typically to a human operator or an external system. The agent emits `RequireExternalExecutionEvent` and pauses until the result is fed back via `ExternalExecutionResultEvent`.
+External-execution tools delegate the actual work outside the agent runtime — typically to a human operator or an external system. The agent emits `RequireExternalExecutionEvent` and pauses. When the next call feeds back matching `ToolResultBlock`s, the agent emits `ExternalExecutionResultEvent` with the same `replyId` before continuing.
 
 This pattern is the foundation of [human-in-the-loop](./agent.md#human-in-the-loop) flows — some actions need human approval or human execution.
 
@@ -3599,6 +3633,26 @@ AgentState restored = AgentState.fromJsonString(json);
 | `setSummary(...)` / `getSummary()` | Custom compaction summary (for your own compaction middleware) |
 | `toJson()` / `fromJsonString(String)` | Serialize / deserialize |
 
+### Clearing a session's conversation context
+
+To let a user start a fresh topic without creating a new session, call `clearContext`. It keeps the
+same `(userId, sessionId)` and preserves non-conversation state such as permissions, tools, tasks,
+and Plan Mode. It clears the model-visible message buffer and compaction summary, then immediately
+persists the result when the agent has an `AgentStateStore`.
+
+```java
+agent.clearContext("alice", "session-001");
+
+// Or use the same RuntimeContext used by calls.
+agent.clearContext(RuntimeContext.builder()
+    .userId("alice")
+    .sessionId("session-001")
+    .build());
+```
+
+Call it after the session's current request has completed. It does not cancel an in-flight call;
+the next call starts with the cleared conversation context.
+
 :::{note}
 The 1.0 `Memory` interface (`InMemoryMemory` / `LongTermMemory`, etc.) is `@Deprecated(forRemoval = true)` in 2.0. New code should use `AgentState.getContext()` + an `AgentStateStore`; `Memory` remains only as a source-compat shim.
 :::
@@ -4018,12 +4072,41 @@ A single `HarnessAgent` instance can serve thousands of concurrent users with ze
 HarnessAgent agent = HarnessAgent.builder()
     .name("MyAgent")
     .model(model)
-    .workspace(Paths.get(".agentscope/workspace"))   // omit → ${user.dir}/.agentscope/workspace
+    .workspace(Paths.get(".agentscope/workspace"))   // omit → see resolution order below
     .additionalContextFile("SOUL.md")                // any workspace-relative path, inlined in full
     .additionalContextFile("PREFERENCES.md")
     .maxContextTokens(8000)                          // MEMORY injection budget
     .build();
 ```
+
+### Workspace resolution order
+
+When `workspace(...)` is not called explicitly, `build()` resolves the workspace directory with
+the following priority (highest first):
+
+| Priority | Source | Notes |
+|----------|--------|-------|
+| 1 | `workspace(Path)` / `workspace(String)` | Explicit builder value, overrides everything |
+| 2 | `agentscope.workspace` system property | `-Dagentscope.workspace=/data/workspace` |
+| 3 | `AGENTSCOPE_WORKSPACE` environment variable | `export AGENTSCOPE_WORKSPACE=/data/workspace` |
+| 4 | Default | `${user.dir}/.agentscope/workspace` |
+
+The system property and environment variable exist mainly for **image packaging / container
+deployment**: keep the path out of application code and inject it at image-build or container-start
+time. For example:
+
+```dockerfile
+ENV AGENTSCOPE_WORKSPACE=/data/agent-workspace
+```
+
+```yaml
+# k8s / docker-compose
+env:
+  - name: AGENTSCOPE_WORKSPACE
+    value: /data/agent-workspace
+```
+
+> A blank value (e.g. `"   "`) is treated as unset and falls through to the next level.
 
 Minimum `AGENTS.md` skeleton:
 
@@ -4042,8 +4125,8 @@ Opt-out switches (rare in production, useful for debugging or self-management):
 | Method | What it disables |
 |--------|------------------|
 | `disableWorkspaceContext()` | system-prompt injection (`AGENTS.md` / `MEMORY.md` / `knowledge/`) |
-| `disableMemoryHooks()` | memory flush + background maintenance |
-| `disableMemoryTools()` | `memory_search` / `memory_get` / `session_search` tools |
+| `disableMemoryHooks()` | memory flush + background maintenance; also drops the "automatically extracted" Persistence line from the system prompt. Combined with `disableMemoryTools()`, also skips `<memory_context>` (`MEMORY.md`) injection |
+| `disableMemoryTools()` | `memory_search` / `memory_get` / `memory_save` / `session_search` tools; also omits Memory Recall and tool-based Persistence guidance from the system prompt |
 | `disableSubagents()` | the entire subagent subsystem |
 | `disableDynamicSkills()` | per-turn skill re-merge; falls back to one-shot merge at build time |
 | `disableToolsConfig()` | reading `tools.json` |
@@ -4060,11 +4143,11 @@ Before every reasoning step, `WorkspaceContextMiddleware` (`io.agentscope.harnes
 | Section | Source | Budgeted |
 |---------|--------|----------|
 | `## Session Context` | Template (today's date, OS, workspace absolute path, temp dir, current `sessionId`) | no |
-| `## Domain Knowledge` / `## Memory Recall` / `## Memory Persistence` guidance | Built-in templates (teach the model how to use memory + navigate knowledge) | no |
+| `## Domain Knowledge` / `## Memory Recall` / `## Memory Persistence` guidance | Built-in templates (teach the model how to use memory + navigate knowledge). Memory sections are omitted / trimmed when `disableMemoryTools()` / `disableMemoryHooks()` are set | no |
 | `## Workspace` section | Template, **branches per filesystem mode** (see below) — tells the model whether it runs locally / sandboxed / on a remote store | no |
 | `## Workspace Files (Injected)` notice | Framework auto-loads the following files from the workspace into a `<loaded_context>` XML block | see below |
 | `<agents_context>` | Full `AGENTS.md` | unlimited |
-| `<memory_context>` | `MEMORY.md`, char-truncated when over the remaining budget with a "use memory_search for older entries" note | `maxContextTokens`, default 8000 |
+| `<memory_context>` | `MEMORY.md`, char-truncated when over the remaining budget with a "use memory_search for older entries" note (plain truncate note when tools are disabled; omitted entirely when both memory tools and hooks are disabled) | `maxContextTokens`, default 8000 |
 | `<domain_knowledge_context>` | Full `knowledge/KNOWLEDGE.md` + listing of every file under `knowledge/` | unlimited (filenames only as the catalog) |
 | `<x_md>` / `<y_md>` | Anything you added with `additionalContextFile("X.md")` | unlimited |
 
@@ -4647,12 +4730,15 @@ If you want to handle memory yourself or wire your own tools:
 ```java
 HarnessAgent.builder()
     ...
-    .disableMemoryHooks()      // disables flush + background maintenance
-    .disableMemoryTools()      // skips memory_search / memory_get / session_search registration
+    .disableMemoryHooks()      // disables flush + background maintenance (+ auto-extract prompt line)
+    .disableMemoryTools()      // skips memory_search / memory_get / memory_save / session_search
+                               // and matching Memory Recall / tool Persistence guidance
     .build();
 ```
 
-`disableMemoryHooks()` is the nuclear option; if you only want to throttle, use `.memory(MemoryConfig.builder().flushTrigger(...).build())` instead.
+Together these also skip `<memory_context>` (`MEMORY.md`) injection while keeping Domain Knowledge / AGENTS / knowledge context.
+
+`disableMemoryHooks()` is the nuclear option for background memory work; if you only want to throttle, use `.memory(MemoryConfig.builder().flushTrigger(...).build())` instead.
 
 ## Related Pages
 
@@ -4810,7 +4896,9 @@ HarnessAgent agent = HarnessAgent.builder()
 | `workspaceProjectionEnabled(boolean)` | Enable host → sandbox static asset projection | `true` |
 | `workspaceProjectionRoots(List)` | Root paths included in projection | `AGENTS.md`, `skills`, `subagents`, `knowledge`, `.skills-cache` |
 
-#### Kubernetes sandbox
+#### Kubernetes sandbox (agent-sandbox)
+
+The Kubernetes store is fully based on [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox): sandbox pods are managed by the agent-sandbox controller in your cluster, and image, resources, and PVCs are all declared cluster-side in a `SandboxTemplate` / `SandboxWarmPool` (not configured from Java). The Java side claims instances from the warm pool via `SandboxClaim`. Install the agent-sandbox controller and create the template and warm pool before use.
 
 ```java
 HarnessAgent agent = HarnessAgent.builder()
@@ -4818,16 +4906,27 @@ HarnessAgent agent = HarnessAgent.builder()
     .model(model)
     .workspace(workspace)
     .filesystem(new KubernetesFilesystemSpec()
-        .image("node:20-slim")
         .namespace("agents")
-        .serviceAccount("agent-runner")
-        .cpuRequest("500m")
-        .memoryRequest("256Mi")
-        .nodeSelector(Map.of("pool", "agent"))
-        .podLabels(Map.of("app", "agentscope"))
+        .warmPoolName("agent-pool")        // SandboxWarmPool name
         .isolationScope(IsolationScope.USER))
     .build();
 ```
+
+Main `KubernetesFilesystemSpec` options:
+
+| Method | Description | Default |
+|--------|-------------|---------|
+| `namespace(String)` | namespace of the SandboxClaim | `default` |
+| `warmPoolName(String)` | `SandboxWarmPool` name | required |
+| `workspaceRoot(String)` | workspace root inside the sandbox; **must be on the PVC mount declared in the template** | `/workspace` |
+| `fileApiBaseDir(String)` | runtime file API base directory; must match `workspaceRoot`; blank falls back to base64-over-exec transfer | `/workspace` |
+| `apiUrl(String)` | direct runtime API URL (takes precedence when set) | none |
+| `gatewayName(String)` / `gatewayNamespace(String)` / `gatewayScheme(String)` | reach the sandbox through the Gateway API | none |
+| `serverPort(int)` | runtime HTTP API port | `8888` |
+| `kubernetesClient(KubernetesClient)` | custom fabric8 client | kubeconfig auto-loaded |
+| `snapshotSpec(SandboxSnapshotSpec)` | snapshot strategy (see the sandbox page for the PVC trade-off) | `NoopSnapshotSpec` |
+
+When neither `apiUrl` nor `gateway*` is set, a local tunnel via `kubectl port-forward` is used (good for development). The runtime image must satisfy the [runtime image contract](./sandbox.md#runtime-image-contract); **workspace persistence depends on the PVC configured in the template** — see [Sandbox - Kubernetes state persistence](./sandbox.md#kubernetes-state-persistence-pvc-is-the-first-layer).
 
 #### E2B sandbox
 
@@ -5364,18 +5463,109 @@ Pass the same `externalSandbox` to each agent's `call()`, then `shutdown()` it y
 | Store | Best for |
 |---------|----------|
 | **Docker** | Local dev / single machine / trusted shell |
-| **Kubernetes** | Self-hosted K8s, node-level bind mounts |
+| **Kubernetes** | Self-hosted K8s; fully based on [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) (SandboxClaim / WarmPool), workspace persistence via PVC (see below) |
 | **Daytona** | Generic managed sandbox HTTP API |
 | **E2B** | Generic managed sandbox + native platform snapshots |
 | **AgentRun** | Aliyun-managed sandbox (Function Compute FC 3.0); per-instance NAS / OSS auto-mount; mainland-China low latency. Treated as a regular `SandboxFilesystemSpec` — full setup details (templates, RAM permissions, NAS-first config) live in the integration docs |
 
 All stores implement the same interface; agent code, toolkit, and `AGENTS.md` don't change.
 
+## Runtime image contract
+
+You choose the sandbox image (Docker `image`, the Kubernetes agent-sandbox runtime image, etc.), but **not every image works**. Harness file tools (`read_file` / `write_file` / `edit_file` / `grep_files` / `glob_files` / `list_files`) and the snapshot machinery are all implemented by running POSIX shell commands inside the sandbox. The image must satisfy the contract below, or tools will fail in hard-to-diagnose ways.
+
+### Baseline contract (all backends)
+
+The image must provide:
+
+| Category | Requirement | Used by |
+|----------|-------------|---------|
+| Shell | POSIX-compatible `sh` (`[ ]`, `&&`, pipes, redirection, heredocs) | every file tool, the `execute` tool |
+| Core utils | `mkdir` `dirname` `rm` `mv` `test` `printf` `sort` | individual file operations |
+| Text/search | `sed`, `grep` (with `-rHnF`, `--include`), `find` | `read_file` pagination, `grep_files`, `glob_files` |
+| Metadata | GNU-style `stat -c` (not BSD `stat -f`) | `list_files`, `glob_files` |
+| Archive/encoding | `tar`, `base64` (encode + `-d` decode) | snapshot persist/hydrate, file upload/download |
+| Interpreter | `python3` | `edit_file` (exact string replacement) |
+| Filesystem | writable workspace root (default `/workspace`) | everything |
+
+Images based on `ubuntu:24.04` or `debian` qualify out of the box (`python3` may need installing); `alpine` (BusyBox `stat` / `grep` behave differently) and distroless images do **not**.
+
+Quick conformance check (run inside the image; all must succeed):
+
+```bash
+sh -c 'echo ok' && python3 --version && tar --version \
+  && printf x | base64 | base64 -d && stat -c %Y /tmp && grep -rHnF --include='*.txt' x /tmp; true
+```
+
+### Additional contract for Kubernetes (agent-sandbox)
+
+The agent-sandbox backend does not `kubectl exec` into the container; it talks to an HTTP API exposed by the runtime container (default port 8888). The runtime service in your image must implement:
+
+| Endpoint | Semantics |
+|----------|-----------|
+| `POST /execute` (body `{"command": "..."}`) | **Must interpret the command with POSIX shell semantics** (equivalent to `sh -c`) and return `{"stdout", "stderr", "exit_code"}`. Harness sends commands containing `cd ... && (...)`, pipes, and other shell constructs |
+| `POST /upload` (multipart; `filename` is a relative path) | writes a file under the file-API base directory |
+| `GET /download/{path}` | downloads file bytes by relative path |
+| `GET /list/{path}`, `GET /exists/{path}` | directory listing / existence check |
+
+**The file-API base directory must match the workspace root** (recommended: `/workspace` for both). Harness transfers two kinds of content through `/upload` / `/download`: workspace snapshot tarballs (temp files under `.agentscope-tmp/` inside that directory), and single-file bytes for `write_file` / file downloads when the path lies under the base directory (Linux caps a single command-line argument at about 128 KiB; native file-API transfer has no such limit). The base directory is configured via `KubernetesSandboxClientOptions.fileApiBaseDir` (default `/workspace`); setting it blank falls back to base64-over-exec transfer.
+
+> Note: the example runtime in the upstream agent-sandbox repo (`examples/python-runtime-sandbox`) runs commands via `shlex.split` + `subprocess.run` without a shell, and roots its file API at `/app` — it does **not** conform to this contract and should only be used as a reference for endpoint shapes. Upstream KEP-539.2 is standardizing the runtime interface (REST/gRPC spec + conformance tests); this contract can converge on the official spec once it lands.
+
+### Why it works this way
+
+The `Sandbox` abstraction's primary data-plane entry point is `exec(command)`. This is deliberate — tool semantics like `edit_file` / `grep_files` (regex, string replacement, globbing) cannot be expressed through a small set of file-API endpoints; running shell scripts against a standard toolchain inside the image is the only portable answer. The file API (upload/download) handles pure byte transfer only: workspace snapshots and single-file upload/download go through it (backends declare the capability by implementing the optional `SandboxFileTransfer` interface); everything else goes through `execute`. Which also means: **the image contract is part of the sandbox interface** — run the conformance check above before switching images.
+
+## Kubernetes state persistence: PVC is the first layer
+
+The Kubernetes store is fully based on agent-sandbox: sandbox pods are managed by the agent-sandbox controller, and image, resources, and storage are all declared cluster-side in a `SandboxTemplate` / `SandboxWarmPool` — the Java side only claims instances (`SandboxClaim`) and connects. This makes it different from other stores in one important way: **workspace data persistence is primarily the PVC's job, not the Harness snapshot's**. The two layers each own one thing:
+
+| Layer | What it preserves | Recovery scenario |
+|-------|-------------------|-------------------|
+| **PVC** (`SandboxTemplate.volumeClaimTemplates`) | the workspace files themselves | pod restart / eviction / hibernate-and-wake — the claim is still alive, files come back with the volume, zero transfer |
+| **SandboxState + snapshotSpec** (Harness layer) | identity pointer (claimName / namespace) + workspace tarball snapshot | locating the sandbox on resume (always required); cold recovery when the claim was deleted / PVC lost / cross-cluster |
+
+The framework needs no special handling for PVCs: on resume, startup probes `test -d /workspace`; when the PVC is there, the "workspace preserved" branch is taken and snapshot restore is skipped entirely.
+
+**Three things you must configure correctly:**
+
+1. **The PVC must be mounted at `workspaceRoot`** (default `/workspace`). Mount it elsewhere or use `emptyDir`, and the workspace is gone on every pod restart — each call degrades to snapshot restore or a cold start. Reference template (from the upstream agent-sandbox examples):
+
+```yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+spec:
+  podTemplate:
+    spec:
+      containers:
+      - name: runtime
+        image: your-conformant-runtime:latest   # must satisfy the runtime image contract above
+        ports:
+        - containerPort: 8888
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace                 # = workspaceRoot = fileApiBaseDir
+  volumeClaimTemplates:
+  - metadata:
+      name: workspace
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+```
+
+2. **Mind the claim lifecycle boundary.** Once `shutdownTime` / `shutdownPolicy: Delete` removes the Sandbox, PVC-based warm recovery is over — the next resume won't find the claim, and the framework creates a fresh sandbox (with an empty new PVC). Whether the workspace comes back depends on point 3.
+
+3. **Pick `snapshotSpec` accordingly.** PVC + `NoopSnapshotSpec` (default): skips the tar-and-upload at the end of every call, at the cost of a cold start once the claim is gone. PVC + OSS / Redis snapshot: belt and suspenders — claim expiry, PVC loss, and cross-cluster migration all recover from the snapshot, at the cost of a full archive per call.
+
+One more reminder: the `SandboxState` identity layer is never optional — in multi-replica deployments configure a distributed `AgentStateStore`, otherwise other replicas can't learn the claimName and the data on the PVC is unreachable no matter how intact it is.
+
 ## How the workspace maps into the sandbox
 
 Host-side key files under `workspace/` (`AGENTS.md`, `skills/`, `subagents/`, `knowledge/`) are synced into the sandbox at each start, content-hash-gated — unchanged content is skipped.
 
-To bind a host directory into the sandbox (e.g. a code repo), use `BindMountEntry` (only Docker / K8s; managed sandboxes like Daytona / E2B run in the cloud and can't mount your host paths).
+To bind a host directory into the sandbox (e.g. a code repo), use `BindMountEntry` (Docker only; for Kubernetes, declare mounts in the cluster-side `SandboxTemplate` pod template instead; managed sandboxes like Daytona / E2B run in the cloud and can't mount your host paths).
 
 File changes inside the sandbox don't sync back to the host — to retrieve sandbox-produced artifacts, have the agent `read_file` them.
 
@@ -5502,6 +5692,10 @@ The parent creates a subagent with `agent_spawn`; the key knob is `timeout_secon
 - `timeout_seconds > 0` (default 30, max 600) — **synchronous** call; the parent blocks on this step, result returns as the tool result.
 - `timeout_seconds = 0` — **background** call; returns a `task_id` immediately, subagent runs in the background.
 
+If a goal can be split into independent subtasks that do not conflict on resources, the parent can issue multiple synchronous subagent calls in the same reasoning turn. Toolkit defaults to parallel tool execution (`ToolkitConfig.parallel=true`), so those synchronous calls advance in parallel on both `ReActAgent` and `HarnessAgent`; the parent enters the next reasoning step only after that batch of tool results has returned, forming a synchronous fan-out / fan-in barrier. To serialize tool calls, pass a custom `Toolkit` built with `ToolkitConfig.builder().parallel(false).build()`.
+
+Decompose work by independence and dependency graph first: nodes without dependency edges are good candidates for parallel subagents; dependent nodes should wait for upstream results before dispatch or merge. Short or critical-path tasks are good candidates for synchronous waiting or an explicit barrier so the parent can continue reasoning with their results. Long tasks can run in the background while the parent continues other work, then be collected and merged later.
+
 ### Background tasks push back automatically
 
 When a background task finishes, the parent **does not need to poll** — before the parent's next reasoning step, the framework injects completed task results as a system reminder at the end of the conversation:
@@ -5526,12 +5720,21 @@ Behind the scenes, subagent lifecycle is split across two groups of tools:
 | `agent_send` | Send a follow-up message to an existing subagent |
 | `agent_list` | List active subagent instances |
 | `task_output` | Retrieve the result of a background task by `task_id` (blocking or non-blocking) |
+| `wait_async_results` | Wait for background results; can wait for specific `task_ids` to all finish, or use `wait_all=true` for a snapshot of unfinished tasks in the current session |
 | `task_cancel` | Cancel a running background task |
 | `task_list` | List all background tasks with their current statuses |
 
-`agent_spawn` / `agent_send` manage subagent **instances** (create, reuse, communicate); `task_output` / `task_cancel` / `task_list` manage background **task results** (check status, fetch output, cancel). The bridge between them is the `task_id` — returned by `agent_spawn` or `agent_send` when `timeout_seconds=0`.
+`agent_spawn` / `agent_send` manage subagent **instances** (create, reuse, communicate); `task_output` / `wait_async_results` / `task_cancel` / `task_list` manage background **task results** (check status, fetch output, wait, cancel). The bridge between them is the `task_id` — returned by `agent_spawn` or `agent_send` when `timeout_seconds=0`.
 
-> In most cases the auto push-back mechanism delivers results without any explicit tool call. The task tools are useful as escape hatches: checking progress before push-back fires, cancelling tasks that are no longer needed, or recovering task state after conversation compaction.
+> In most cases the auto push-back mechanism delivers results without any explicit tool call. The task tools are useful as escape hatches: checking progress before push-back fires, waiting for a set of results that must be available together, cancelling tasks that are no longer needed, or recovering task state after conversation compaction.
+
+There are three common ways to collect asynchronous results:
+
+- **Automatic push-back**: the default path when you do not block. Completed child tasks are injected as a `<system-reminder>` before the next reasoning step.
+- **Targeted task check**: call `task_output(task_id, block=false)` to inspect one task's current state or final result.
+- **Wait barrier (preferred for must-collect-all)**: call `wait_async_results(task_ids="id1,id2")` or `wait_async_results(wait_all=true)`. Barrier mode waits until the set is terminal and **embeds each task's result in the tool return**, so you can continue immediately. `wait_all=true` uses a snapshot of unfinished tasks at call start and does not add tasks created while waiting.
+
+> **Legacy inbox-any**: calling `wait_async_results` without `task_ids` and without `wait_all` only waits until *any* inbox message arrives. That is not a wait-all barrier — use `task_ids` or `wait_all=true` when every task in a group must finish.
 
 ## Send a follow-up to an existing subagent
 
@@ -5698,10 +5901,30 @@ Just set `url` + optional `headers` and the subagent runs through a remote HTTP 
     .description("Remote research subagent")
     .url("http://agent-task-server:8080")
     .headers(Map.of("Authorization", "Bearer xxx"))
+    .remoteStreaming(true)          // default when unset
+    .remoteAskPolicy(RemoteAskPolicy.DENY)  // default
     .build())
 ```
 
 Same sync (`timeout_seconds>0`) / background (`timeout_seconds=0`) semantics apply.
+
+Declaration knobs specific to remote mode:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `remoteStreaming` | `true` (when unset) | When the parent uses `streamEvents()`, forward remote task SSE events into the parent stream with a `source` tag and `metadata.taskId` (same id as the harness `TaskRecord`) |
+| `remoteAskPolicy` | `DENY` | How to resolve remote tool-confirmation (HITL) requests — see [Remote authorization](#remote-authorization) |
+
+### Remote authorization
+
+Parent DENY permission rules are forwarded in the remote submit `context.deny_rules` (same inheritance as local children; opt out with `inheritParentPermissions(false)`).
+
+When the remote agent pauses for tool confirmation (`awaiting_confirm`):
+
+- **Streaming parent + `remoteAskPolicy=PROPAGATE`**: a `RequireUserConfirmEvent` is forwarded into the parent's `streamEvents()` stream with a non-null `source` tag. Resume the remote task via Agent Protocol [`POST /tasks/{id}/resume`](../../integration/protocol/agent-protocol.md) with `decisions[{toolCallId, approved}]`.
+- **Non-streaming parent (`call`) or `remoteAskPolicy=DENY` (default)**: pending confirmations are auto-denied. The tool result includes a note: `remote tool confirmation(s) were auto-denied`.
+
+While awaiting confirmation, task status stays `RUNNING` (`awaitingConfirm=true`). Barriers such as `wait_async_results` therefore keep waiting until the task is resumed and reaches a terminal status.
 
 ## Background task storage
 
@@ -5719,7 +5942,7 @@ When the parent is in Plan Mode, spawned subagents **automatically inherit the r
 
 > New code should use `streamEvents()` (returns `Flux<AgentEvent>`). The legacy `stream()` family (`Flux<Event>`) is `@Deprecated(forRemoval = true)` since 2.0.0 — see [Message & Event](../building-blocks/message-and-event.md) and [V1 Migration Guide B.4](../change-log.md).
 
-When the parent calls a synchronous subagent via `agent_spawn` / `agent_send`, the child's intermediate events are **forwarded live** into the parent's `streamEvents()` stream. Each child event carries a `source` field (a `/`-separated path like `"main/researcher"`) so you can tell parent events (`source == null`) from child events.
+When the parent calls a synchronous subagent via `agent_spawn` / `agent_send`, the child's intermediate events are **forwarded live** into the parent's `streamEvents()` stream. Each child event carries a `source` field (a `/`-separated path like `"main/researcher"`) so you can tell parent events (`source == null`) from child events. Remote Agent Protocol children additionally set `metadata.taskId` (`AgentEvent.METADATA_TASK_ID`) to the harness task id, so two concurrent / same-turn calls to the same remote agent remain distinguishable even when they share a `source` path.
 
 ```
 caller
@@ -5810,7 +6033,8 @@ public Flux<ServerSentEvent<String>> chat(@RequestParam String message,
 | `streamEvents()` + synchronous local child (`timeout_seconds > 0`) | ✔ |
 | `call()` mode (non-streaming) | ✗ (child result returns as `tool_result` string) |
 | `timeout_seconds = 0` background task | ✗ (result pushed via reverse notification to parent's next round) |
-| Remote subagent (Agent Protocol) | ✗ |
+| Remote subagent (Agent Protocol) + parent `streamEvents()` + `remoteStreaming=true` (default) | ✔ |
+| Remote subagent + parent `call()` or `remoteStreaming=false` | ✗ |
 
 ### Error handling
 
@@ -5822,6 +6046,7 @@ When a child throws internally, the framework captures it and writes a `TOOL_RES
 - [Workspace](./workspace.md) — `subagents/` and `agents/<id>/tasks/` layout
 - [Plan Mode](./plan-mode.md) — restrictions on subagents during the plan phase
 - [Architecture](./architecture.md) — how parent and child cooperate
+- [Agent Protocol](../../integration/protocol/agent-protocol.md) — remote task endpoints (SSE + HITL resume)
 - [Message & Event](../building-blocks/message-and-event.md) — `AgentEvent` hierarchy (recommended) and the deprecated `Event` / `EventType` / `StreamOptions` types
 - [V1 Migration Guide B.4](../change-log.md) — `stream()` → `streamEvents()` deprecation timeline
 
@@ -6074,7 +6299,6 @@ The framework also auto-bumps a usage counter every time the agent calls `load_s
 ```java
 .enableSkillCurator(SkillCuratorConfig.builder()
     .intervalHours(7 * 24)        // weekly
-    .minIdleHours(2)              // only when call-gap ≥ 2h
     .staleAfterDays(30)
     .archiveAfterDays(90)
     .build())
@@ -6934,7 +7158,7 @@ Python 2.0's `agent.reply_stream()` exposes a single streaming signature (`Async
 - **Types (soft deprecation, no `forRemoval` yet)**
   - `io.agentscope.core.agent.Event`, `EventType`, `EventSource`
   - Still consumed internally by the harness (subagent event forwarding: `SubAgentTool` / `SubagentEventBus` / `DefaultAgentManager` / `AgentSpawnTool`), AGUI, A2A, chat-completions-web, and Kotlin extension modules as the event-bus / adapter input. They will be flipped to `forRemoval = true` only after those modules migrate to `AgentEvent`, so the entire downstream is not warning-flooded in a single release.
-  - **Current gap:** `HarnessAgent.streamEvents(...)` does **not** forward subagent events yet — the `AgentEvent` hierarchy has no equivalent `EventSource` channel. Callers that need the child-agent stream must stay on the deprecated `stream(...)` path until that channel lands.
+  - Subagent events are forwarded on `HarnessAgent.streamEvents(...)` with a non-null `source` path (including remote Agent Protocol children when `remoteStreaming` is enabled).
 
 New code should use:
 
@@ -6986,6 +7210,17 @@ Detail → [Harness filesystem](harness/filesystem.md)
 ## What's New
 
 The capabilities below are additive in 2.0 — none of them break 1.x code. The Migration Guide above already covers the event system, message refactor, and middleware mechanism, so they are not repeated here.
+
+### AG-UI v2
+
+- The AG-UI adapter now uses the v2 `streamEvents()` path. Normal `RUN_STARTED` / `RUN_FINISHED` events are converted from `AgentStartEvent` / `AgentEndEvent`; error paths emit `RUN_ERROR` and a fallback `RUN_FINISHED`.
+- New `AgentEventConverter` and `AguiEventEnricher` extension points: converters handle semantic mapping, while enrichers handle cross-cutting properties such as `timestamp` / `rawEvent`. The Spring Boot starter automatically collects both bean types.
+- Every `AguiEvent` supports AG-UI base event properties. `BaseEventPropertiesEnricher` is disabled by default; when explicitly enabled, it only fills missing `timestamp` values and does not default `rawEvent`.
+- `AguiAdapterConfig.emitTokenUsage` can emit `CUSTOM token_usage` events with model-call delta and run-level cumulative token usage.
+- **Behavior change:** AgentEvents with `source != null` (subagent events) are emitted as AG-UI `CUSTOM` events (`subagent.lifecycle`, `subagent.text`, `subagent.thinking`, `subagent.tool_call`, `subagent.tool_result`, `subagent.require_confirm`) instead of native `TEXT_MESSAGE_*` / `RUN_*`. Set `emitSubagentEventsAsNative(true)` to restore the legacy native mapping.
+- The Spring Boot starter supports `AguiRuntimeContextResolver`, custom `AguiAgentAdapterFactory`, frontend tool injection / merge mode, and HITL interrupt output.
+
+Detail → [AG-UI](../integration/protocol/agui.md)
 
 ### Toolkit & Permission
 
@@ -7050,6 +7285,128 @@ Source: https://java.agentscope.io/_sources/v2/en/docs/others/release-notes.md
 # Release Notes
 
 This page tracks per-version changes for AgentScope Java 2.0. For the overall migration guide from 1.x, see the [V1 Migration Guide](../change-log.md).
+
+---
+
+## 2.0.1
+
+> Released: 2026-08-05
+
+AgentScope Java 2.0.1 is the first maintenance release after 2.0.0 GA. It expands the model-provider ecosystem, hardens Harness subagent / HITL / permission behavior, and fixes a set of production-critical issues.
+
+**Quick links:** [Quickstart](../quickstart.md) | [V1 Migration Guide](../change-log.md) | [Going to Production](going-to-production.md)
+
+### Added
+
+**Core / Agent**
+
+- Middleware execution ordering via `MiddlewareBase.order()` (higher values wrap outer); `ReActAgent.Builder.build()` stably sorts descending after all registrations ([#2532](https://github.com/agentscope-ai/agentscope-java/pull/2532), [#2449](https://github.com/agentscope-ai/agentscope-java/issues/2449))
+- Session context clear API on `ReActAgent` / `HarnessAgent` to clear model-visible conversation context without creating a new session ([#2499](https://github.com/agentscope-ai/agentscope-java/pull/2499), [#2496](https://github.com/agentscope-ai/agentscope-java/issues/2496))
+- Expose `ReActAgent` state-cache cleanup APIs for long-lived instances ([#2572](https://github.com/agentscope-ai/agentscope-java/pull/2572))
+- Emit `UserConfirmResultEvent` when resuming permission HITL, correlatable with the prior `RequireUserConfirmEvent` via `replyId` ([#2511](https://github.com/agentscope-ai/agentscope-java/pull/2511))
+- Anthropic: support configuring `disable_parallel_tool_use` ([#2257](https://github.com/agentscope-ai/agentscope-java/pull/2257))
+
+**Model Providers**
+
+- Add OpenAI-compatible extension package as a shared base for third-party compatible vendors ([#2208](https://github.com/agentscope-ai/agentscope-java/pull/2208))
+- Add DeepSeek as a first-class model provider (`deepseek:<model>`, `DEEPSEEK_API_KEY`) ([#2307](https://github.com/agentscope-ai/agentscope-java/pull/2307), [#2211](https://github.com/agentscope-ai/agentscope-java/issues/2211))
+- Add GLM (Zhipu AI) provider and dedicated formatters ([#2316](https://github.com/agentscope-ai/agentscope-java/pull/2316))
+- Add Kimi (Moonshot AI) provider and dedicated formatters ([#2320](https://github.com/agentscope-ai/agentscope-java/pull/2320), [#2213](https://github.com/agentscope-ai/agentscope-java/issues/2213))
+- Add MiniMax OpenAI-compatible provider ([#2299](https://github.com/agentscope-ai/agentscope-java/pull/2299))
+
+**Harness / Tools**
+
+- Remote subagent event streaming and HITL resume ([#2559](https://github.com/agentscope-ai/agentscope-java/pull/2559))
+- Wait for async tool results by `taskId` ([#2529](https://github.com/agentscope-ai/agentscope-java/pull/2529))
+- Default workspace via `AGENTSCOPE_WORKSPACE` env var for image packaging ([#2310](https://github.com/agentscope-ai/agentscope-java/pull/2310))
+
+**AG-UI**
+
+- Upgrade AG-UI module event mechanism ([#2306](https://github.com/agentscope-ai/agentscope-java/pull/2306), [#2202](https://github.com/agentscope-ai/agentscope-java/issues/2202))
+- Introduce typed `MessageContent` / `InputContent` for multimodal AG-UI messages ([#2518](https://github.com/agentscope-ai/agentscope-java/pull/2518), [#551](https://github.com/agentscope-ai/agentscope-java/issues/551))
+
+**Spring Boot Starters**
+
+- Add Ollama Spring Boot Starter ([#2176](https://github.com/agentscope-ai/agentscope-java/pull/2176), [#2172](https://github.com/agentscope-ai/agentscope-java/issues/2172))
+
+### Refactored
+
+- Change Toolkit default execution mode to parallel and improve related docs ([#2558](https://github.com/agentscope-ai/agentscope-java/pull/2558), follow-up of [#2529](https://github.com/agentscope-ai/agentscope-java/pull/2529))
+- Abstract session metadata storage to decouple builders from concrete store implementations ([#2258](https://github.com/agentscope-ai/agentscope-java/pull/2258), [#2068](https://github.com/agentscope-ai/agentscope-java/issues/2068))
+- Rebase Kubernetes sandbox store on [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) CRDs / controllers, with the cluster owning sandbox lifecycle and warm pools ([#2308](https://github.com/agentscope-ai/agentscope-java/pull/2308))
+
+### Fixed
+
+**Core / Agent**
+
+- Prevent pending recovery from consuming HITL approvals ([#2109](https://github.com/agentscope-ai/agentscope-java/pull/2109), [#2534](https://github.com/agentscope-ai/agentscope-java/issues/2534))
+- Apply transformed `onModelCall` text deltas to the final message so native structured-output parsing does not see stale text ([#2469](https://github.com/agentscope-ai/agentscope-java/pull/2469), [#2385](https://github.com/agentscope-ai/agentscope-java/issues/2385))
+- Repair null streaming tool args from complete raw JSON ([#2451](https://github.com/agentscope-ai/agentscope-java/pull/2451), [#768](https://github.com/agentscope-ai/agentscope-java/issues/768))
+- Unbind state-saver on `ReActAgent.close()` to prevent graceful-shutdown registry growth / OOM ([#2322](https://github.com/agentscope-ai/agentscope-java/pull/2322), [#2321](https://github.com/agentscope-ai/agentscope-java/issues/2321))
+- Unbind `ShutdownStateSaver` on `ReActAgent.close()` to fix a memory leak ([#2384](https://github.com/agentscope-ai/agentscope-java/pull/2384))
+- Mark user interrupts with interrupted reason ([#2260](https://github.com/agentscope-ai/agentscope-java/pull/2260))
+- Handle malformed Unicode when writing agent state files (`UnmappableCharacterException`) ([#2255](https://github.com/agentscope-ai/agentscope-java/pull/2255), [#2204](https://github.com/agentscope-ai/agentscope-java/issues/2204))
+- Forward reasoning middleware events (e.g. `InboxMiddleware` `HintBlockEvent`) to `streamEvents()` ([#2179](https://github.com/agentscope-ai/agentscope-java/pull/2179), [#2160](https://github.com/agentscope-ai/agentscope-java/issues/2160))
+- Mark `ToolResultBlock.error` as a structured error ([#2174](https://github.com/agentscope-ai/agentscope-java/pull/2174), [#2157](https://github.com/agentscope-ai/agentscope-java/issues/2157), [#2111](https://github.com/agentscope-ai/agentscope-java/issues/2111))
+
+**Model Providers**
+
+- DashScope: route `qwen3.8-max` to the multimodal endpoint ([#2553](https://github.com/agentscope-ai/agentscope-java/pull/2553))
+- DashScope: preserve SSE error response body so callers can read `request_id` ([#2278](https://github.com/agentscope-ai/agentscope-java/pull/2278), [#2197](https://github.com/agentscope-ai/agentscope-java/issues/2197))
+- OpenAI: wrap streaming branch in `Flux.defer` so retries re-issue HTTP requests ([#2079](https://github.com/agentscope-ai/agentscope-java/pull/2079))
+- OpenAI: terminate stream on `[DONE]` sentinel ([#2104](https://github.com/agentscope-ai/agentscope-java/pull/2104))
+- OpenAI: drop non-chunk summary event messages to avoid content duplication ([#2367](https://github.com/agentscope-ai/agentscope-java/pull/2367))
+- OpenAI: sanitize `name` field in `OpenAIMessageConverter` ([#2346](https://github.com/agentscope-ai/agentscope-java/pull/2346))
+- OpenAI AutoConfiguration: make api-key optional ([#2175](https://github.com/agentscope-ai/agentscope-java/pull/2175))
+- DeepSeek formatter: preserve `system` role ([#2189](https://github.com/agentscope-ai/agentscope-java/pull/2189), [#2168](https://github.com/agentscope-ai/agentscope-java/issues/2168))
+- Ollama: honor `stream` flag in `OllamaChatModel` ([#2415](https://github.com/agentscope-ai/agentscope-java/pull/2415))
+- Anthropic: map `ToolChoice.None` to disable tools (previously incorrectly forced tool use) ([#2232](https://github.com/agentscope-ai/agentscope-java/pull/2232), [#2221](https://github.com/agentscope-ai/agentscope-java/issues/2221))
+- Model provider optimizations and compatibility tweaks ([#2474](https://github.com/agentscope-ai/agentscope-java/pull/2474))
+
+**Harness / Tools / Sandbox**
+
+- Stamp `taskId` on remote subagent forwarded events ([#2575](https://github.com/agentscope-ai/agentscope-java/pull/2575))
+- Gate memory prompt guidance on disable flags ([#2565](https://github.com/agentscope-ai/agentscope-java/pull/2565))
+- Emit subagent end before parent completion to avoid dropped events ([#2544](https://github.com/agentscope-ai/agentscope-java/pull/2544))
+- Close subagent event stream when the parent is cancelled ([#2481](https://github.com/agentscope-ai/agentscope-java/pull/2481), [#2480](https://github.com/agentscope-ai/agentscope-java/issues/2480))
+- Enforce parent DENY rules for spawned subagents ([#2477](https://github.com/agentscope-ai/agentscope-java/pull/2477))
+- Preserve `RuntimeContext` during skill promotion ([#2465](https://github.com/agentscope-ai/agentscope-java/pull/2465))
+- Enforce Plan Mode for subagents ([#2377](https://github.com/agentscope-ai/agentscope-java/pull/2377))
+- Reject workspace path traversal (e.g. `../`) ([#2358](https://github.com/agentscope-ai/agentscope-java/pull/2358))
+- Support Windows local shell execution (working-directory commands and charset decoding) ([#2304](https://github.com/agentscope-ai/agentscope-java/pull/2304), [#2268](https://github.com/agentscope-ai/agentscope-java/issues/2268))
+- Isolate static subagent registries by runtime context to prevent multi-tenant crosstalk ([#2371](https://github.com/agentscope-ai/agentscope-java/pull/2371), [#2328](https://github.com/agentscope-ai/agentscope-java/issues/2328))
+- Retain prior summaries in chained compaction to preserve user intent ([#2360](https://github.com/agentscope-ai/agentscope-java/pull/2360))
+- Preserve skill isolation and tool result history ([#2319](https://github.com/agentscope-ai/agentscope-java/pull/2319))
+- `RemoteFilesystem` recursive glob matches files at the search root ([#2343](https://github.com/agentscope-ai/agentscope-java/pull/2343))
+- Mark optional FilesystemTool params as `required=false` ([#2227](https://github.com/agentscope-ai/agentscope-java/pull/2227))
+- Optimize shell-execute `working_directory` parameter and tool usage hints ([#2107](https://github.com/agentscope-ai/agentscope-java/pull/2107))
+- Declared subagents inherit parent `modelExecutionConfig` / `toolExecutionConfig` ([#2252](https://github.com/agentscope-ai/agentscope-java/pull/2252))
+- Correct `sessionId` parameter description ([#2195](https://github.com/agentscope-ai/agentscope-java/pull/2195))
+
+**Storage / Transport**
+
+- PostgreSQL BaseStore schema support ([#2273](https://github.com/agentscope-ai/agentscope-java/pull/2273), [#2192](https://github.com/agentscope-ai/agentscope-java/issues/2192))
+- Fix PostgreSQL upsert SQL syntax error ([#2167](https://github.com/agentscope-ai/agentscope-java/pull/2167), [#2166](https://github.com/agentscope-ai/agentscope-java/issues/2166))
+- Fix `JdkHttpTransport` SSE stream being cut by absolute timeouts ([#1322](https://github.com/agentscope-ai/agentscope-java/pull/1322), [#1302](https://github.com/agentscope-ai/agentscope-java/issues/1302))
+
+**Spring Boot / Examples**
+
+- Fix Spring Boot starter package name ([#2264](https://github.com/agentscope-ai/agentscope-java/pull/2264))
+- Use raw DashScope model names in examples (drop invalid `dashscope:` prefix) ([#2318](https://github.com/agentscope-ai/agentscope-java/pull/2318))
+- Correct DashScope model name in `RuntimeContextExample` ([#2228](https://github.com/agentscope-ai/agentscope-java/pull/2228), [#2229](https://github.com/agentscope-ai/agentscope-java/issues/2229))
+- Correct skill example resource path ([#2250](https://github.com/agentscope-ai/agentscope-java/pull/2250))
+- Improve docs and examples ([#2508](https://github.com/agentscope-ai/agentscope-java/pull/2508))
+
+### Documentation
+
+- Add Agent Evolution to the Java 2.0 feature list in README ([#2494](https://github.com/agentscope-ai/agentscope-java/pull/2494))
+- Clarify that the all-in-one dependency includes model providers ([#2425](https://github.com/agentscope-ai/agentscope-java/pull/2425), [#840](https://github.com/agentscope-ai/agentscope-java/issues/840))
+- Fix documentation link redirects ([#2203](https://github.com/agentscope-ai/agentscope-java/pull/2203), [#2198](https://github.com/agentscope-ai/agentscope-java/issues/2198))
+- Generate version-scoped `llms.txt` artifacts (`/v1`, `/v2`) ([#2188](https://github.com/agentscope-ai/agentscope-java/pull/2188), [#2185](https://github.com/agentscope-ai/agentscope-java/issues/2185))
+- Document model builder customizers ([#2092](https://github.com/agentscope-ai/agentscope-java/pull/2092))
+- Update model documentation ([#2100](https://github.com/agentscope-ai/agentscope-java/pull/2100))
+- Correct README doc links and release notes URLs ([#2099](https://github.com/agentscope-ai/agentscope-java/pull/2099))
+- Update AG-UI documentation ([#2274](https://github.com/agentscope-ai/agentscope-java/pull/2274))
 
 ---
 
@@ -7393,6 +7750,20 @@ DistributedStore store = DistributedStore.builder()
     .sandboxExecutionGuard(RedisDistributedStore.fromJedis(jedis).sandboxExecutionGuard())
     .build();
 ```
+
+### Alternative: aistio hosted store
+
+If you run an aistio control plane, it can host BaseStore / sandbox lock & snapshot / MessageBus / AsyncToolRegistry / **TaskRepository** / optional **SessionTurnGate**. You still supply **one** `AgentStateStore` (Redis/MySQL/Postgres/OSS); core provides `getVersioned` / `saveIfVersion`, but storage stays off the control plane:
+
+```java
+ControlPlaneStores cp = ControlPlaneStores.fromEnv();
+HarnessAgent.builder()
+    .distributedStore(cp.withAgentStateStore(redis.agentStateStore()))
+    .filesystem(new RemoteFilesystemSpec().isolationScope(IsolationScope.USER))
+    .build();
+```
+
+Enable with `--enable-hosted-store` on the control plane (Postgres recommended). `withAgentStateStore` includes hosted TaskRepository; **subagent background tasks in SandboxFilesystem mode** need this path. Redis/Postgres/MySQL/InMemory AgentStateStore backends support versioning CAS; others remain LWW. Turn gate + `ConflictPolicy.FAIL` are optional for multi-replica duplicate-turn reduction; correctness comes from CAS. Auth is a shared internal token with tenant from the request body — not for mutually untrusted multi-tenant agents on one CP. `queueDrain` is destructive (ack-on-read). See [Distributed Storage — aistio Hosted Store](../../integration/distributed/index.md#aistio-hosted-store).
 
 ## At a glance: single-node defaults vs. distributed production
 
@@ -7889,6 +8260,10 @@ All model providers have moved to independent model extension modules, while `ag
 | Provider | Maven artifact | `ModelRegistry` id | Standard environment variable | Docs |
 |----------|----------------|--------------------|-------------------------------|------|
 | OpenAI | `agentscope-extensions-model-openai` | `openai:<model>` | `OPENAI_API_KEY` | <a class="reference internal" href="model/openai.html">OpenAI</a> |
+| DeepSeek | `agentscope-extensions-model-openai` | `deepseek:<model>` | `DEEPSEEK_API_KEY` | <a class="reference internal" href="model/deepseek.html">DeepSeek</a> |
+| GLM | `agentscope-extensions-model-openai` | `glm:<model>` | `ZAI_API_KEY` / `GLM_API_KEY` / `ZHIPUAI_API_KEY` | <a class="reference internal" href="model/glm.html">GLM</a> |
+| Kimi | `agentscope-extensions-model-openai` | `kimi:<model>` | `MOONSHOT_API_KEY` / `KIMI_API_KEY` | <a class="reference internal" href="model/kimi.html">Kimi</a> |
+| MiniMax | `agentscope-extensions-model-openai` | `minimax:<model>` | `MINIMAX_API_KEY` | <a class="reference internal" href="model/minimax.html">MiniMax</a> |
 | DashScope | `agentscope-extensions-model-dashscope` | `dashscope:<model>` / `qwen*` | `DASHSCOPE_API_KEY` | <a class="reference internal" href="model/dashscope.html">DashScope</a> |
 | Gemini | `agentscope-extensions-model-gemini` | `gemini:<model>` | `GEMINI_API_KEY` | <a class="reference internal" href="model/gemini.html">Gemini</a> |
 | Anthropic | `agentscope-extensions-model-anthropic` | `anthropic:<model>` | `ANTHROPIC_API_KEY` | <a class="reference internal" href="model/anthropic.html">Anthropic</a> |
@@ -7981,6 +8356,581 @@ Runtime, language, debugging, and training extensions.
 ```{note}
 For Spring Boot users, most of the above extensions ship a matching `agentscope-spring-boot-starter-*` for one-line integration that removes the manual wiring.
 ```
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/index.md
+
+# Model Providers
+
+Model provider extensions connect AgentScope Java to hosted or local chat model APIs. Each provider can be selected through a `ModelRegistry` id when its extension module is on the classpath.
+
+- [OpenAI](openai.md)
+- [DeepSeek](deepseek.md)
+- [GLM](glm.md)
+- [Kimi](kimi.md)
+- [MiniMax](minimax.md)
+- [DashScope](dashscope.md)
+- [Gemini](gemini.md)
+- [Anthropic](anthropic.md)
+- [Ollama](ollama.md)
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/openai.md
+
+# OpenAI Model
+
+`agentscope-extensions-model-openai` integrates OpenAI Chat Completions-style models. It is also the module to use for OpenAI-compatible endpoints such as DeepSeek, GLM, Kimi, MiniMax, and similar services when their wire format follows the OpenAI API.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-openai</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `OPENAI_API_KEY`, then use the `openai:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("openai:gpt-4.1-mini") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+## Explicit builder
+
+Use the builder when you need a custom endpoint, formatter, transport, or generation options:
+
+```java
+import io.agentscope.extensions.model.openai.OpenAIChatModel;
+
+OpenAIChatModel model = OpenAIChatModel.builder()
+    .apiKey(System.getenv("OPENAI_API_KEY"))
+    .modelName("gpt-4.1-mini")
+    .stream(true)
+    .build();
+```
+
+## Spring Boot
+
+Spring Boot applications can use the OpenAI starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-openai-spring-boot-starter</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Full builder options, formatters, credentials, and registry context details are covered in [Model](../../docs/building-blocks/model.md).
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/deepseek.md
+
+# DeepSeek Model
+
+`agentscope-extensions-model-openai` provides first-class DeepSeek support through the OpenAI-compatible model stack. Add the OpenAI model extension module, then use `deepseek:<model>` with `ModelRegistry`.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-openai</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `DEEPSEEK_API_KEY`, then use the `deepseek:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("deepseek:deepseek-v4-flash") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+The provider defaults to `https://api.deepseek.com`, strips the `deepseek:` prefix before sending the model name, and uses the DeepSeek formatter from `io.agentscope.extensions.model.openai.compat.deepseek`.
+
+## Thinking mode
+
+Enable DeepSeek thinking mode through `ModelCreationContext` when resolving the model:
+
+```java
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ModelCreationContext;
+import io.agentscope.core.model.ModelRegistry;
+
+Model model = ModelRegistry.resolve(
+    "deepseek:deepseek-v4-flash",
+    ModelCreationContext.builder()
+        .enableThinking(true)
+        .build());
+```
+
+Streaming callers can render `ThinkingBlockDeltaEvent` separately from `TextBlockDeltaEvent`.
+
+## Compatibility notes
+
+The DeepSeek formatter preserves DeepSeek-compatible message fields, including `system` roles and supported `name` fields. It also removes stale reasoning content from previous turns while preserving reasoning content needed by current tool-call context.
+
+DeepSeek's stable endpoint does not use the tool schema `strict` field by default, so the default formatter omits `strict` even when a tool is registered with strict schema validation. Structured output uses the normal AgentScope fallback behavior unless you explicitly configure native structured output for a compatible endpoint.
+
+For beta or compatible endpoints, pass `baseUrl`, `endpointPath`, generation options, or formatter overrides through `ModelCreationContext`.
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/glm.md
+
+# GLM Model
+
+`agentscope-extensions-model-openai` provides first-class GLM (Zhipu AI / Z.AI) support through the OpenAI-compatible model stack. Add the OpenAI model extension module, then use `glm:<model>` with `ModelRegistry`.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-openai</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `ZAI_API_KEY`, `GLM_API_KEY`, or `ZHIPUAI_API_KEY`, then use the `glm:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("glm:glm-5.2") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+The provider defaults to `https://open.bigmodel.cn/api/paas/v4`, strips the `glm:` prefix before sending the model name, and uses the GLM formatter from `io.agentscope.extensions.model.openai.compat.glm`.
+
+## Thinking mode
+
+Pass GLM thinking options through `GenerateOptions` when resolving the model:
+
+```java
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ModelCreationContext;
+import io.agentscope.core.model.ModelRegistry;
+import java.util.Map;
+
+Model model = ModelRegistry.resolve(
+    "glm:glm-5.2",
+    ModelCreationContext.builder()
+        .component(
+            GenerateOptions.class,
+            GenerateOptions.builder()
+                .additionalBodyParam("thinking", Map.of("type", "disabled"))
+                .reasoningEffort("max")
+                .build())
+        .build());
+```
+
+GLM-4.7 and GLM-5 series enable thinking by default. GLM-5.2 also supports `reasoning_effort`, and streaming tool-call arguments can be enabled with `additionalBodyParam("tool_stream", true)`.
+
+## Compatibility notes
+
+The GLM formatter adapts OpenAI-style requests to the GLM chat-completions API. It ensures at least one user message exists, removes unsupported message `name` fields, omits tool schema `strict`, and strips unsupported request fields such as `frequency_penalty`, `presence_penalty`, `thinking_budget`, and `stream_options`.
+
+GLM only supports `max_tokens`, so `max_completion_tokens` is mapped to `max_tokens` when `max_tokens` is not already set. `temperature` and `top_p` are clamped to the GLM-supported ranges.
+
+GLM only accepts `tool_choice=auto`. Forced choices are degraded to `auto`; `ToolChoice.None` removes tools from the request to preserve the no-tool-call contract.
+
+Structured output uses the normal AgentScope fallback behavior by default because GLM `response_format` only supports `json_object`. Only enable native structured output when you have confirmed the target endpoint supports the behavior you need.
+
+For compatible or self-hosted endpoints, pass `baseUrl`, `endpointPath`, generation options, or formatter overrides through `ModelCreationContext`.
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/kimi.md
+
+# Kimi Model
+
+`agentscope-extensions-model-openai` provides first-class Kimi (Moonshot AI) support through the OpenAI-compatible model stack. Add the OpenAI model extension module, then use `kimi:<model>` with `ModelRegistry`.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-openai</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `MOONSHOT_API_KEY` or `KIMI_API_KEY`, then use the `kimi:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("kimi:kimi-k3") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+The provider defaults to `https://api.moonshot.cn/v1`, strips the `kimi:` prefix before sending the model name, and uses the Kimi formatter from `io.agentscope.extensions.model.openai.compat.kimi`.
+
+## Thinking mode
+
+Pass Kimi thinking options through `GenerateOptions` when resolving the model:
+
+```java
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ModelCreationContext;
+import io.agentscope.core.model.ModelRegistry;
+import java.util.Map;
+
+Model model = ModelRegistry.resolve(
+    "kimi:kimi-k2.6",
+    ModelCreationContext.builder()
+        .component(
+            GenerateOptions.class,
+            GenerateOptions.builder()
+                .additionalBodyParam("thinking", Map.of("type", "disabled"))
+                .maxCompletionTokens(16000)
+                .build())
+        .build());
+```
+
+`kimi-k3` uses the top-level `reasoning_effort` option (`low`, `high`, or `max`). `kimi-k3` and `kimi-k2.7-code` always run with thinking enabled. `kimi-k2.6` and `kimi-k2.5` enable thinking by default, but can disable it with `additionalBodyParam("thinking", Map.of("type", "disabled"))`.
+
+## Compatibility notes
+
+The Kimi formatter adapts OpenAI-style requests to the Kimi chat-completions API. It omits tool schema `strict`, preserves assistant `reasoning_content` in message history, and strips unsupported request fields such as `thinking_budget`.
+
+On `kimi-*` models, sampling parameters such as `temperature`, `top_p`, `n`, `frequency_penalty`, and `presence_penalty` are fixed by the platform and are removed from requests. The `moonshot-v1` series keeps those parameters. Kimi documents `max_completion_tokens`, so `max_tokens` is mapped to `max_completion_tokens` when `max_completion_tokens` is not already set.
+
+`reasoning_effort` is kept only for `kimi-k3`. For K2.x thinking controls, pass the `thinking` body parameter through `GenerateOptions.additionalBodyParam`.
+
+`tool_choice=auto` and `tool_choice=none` are supported broadly. `tool_choice=required` is degraded to `auto` on K2.x models. Forcing a specific function is incompatible with thinking enabled, so it is degraded to `auto` on `kimi-k3`, on `kimi-k2.7-code`, and on `kimi-k2.6` / `kimi-k2.5` unless `thinking.type` is explicitly set to `disabled`.
+
+Structured output uses the normal AgentScope fallback behavior by default.
+
+For compatible or self-hosted endpoints, pass `baseUrl`, `endpointPath`, generation options, or formatter overrides through `ModelCreationContext`.
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/minimax.md
+
+# MiniMax Model
+
+`agentscope-extensions-model-openai` provides first-class MiniMax support through the OpenAI-compatible model stack. Add the OpenAI model extension module, then use `minimax:<model>` with `ModelRegistry`.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-openai</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `MINIMAX_API_KEY`, then use the `minimax:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("minimax:MiniMax-M3") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+The provider base URL defaults to `https://api.minimaxi.com/v1`. `OpenAIClient` appends the default chat completions endpoint, so the final request URL is `https://api.minimaxi.com/v1/chat/completions`, matching the MiniMax OpenAI-compatible API. The provider strips the `minimax:` prefix before sending the model name and uses the MiniMax formatter from `io.agentscope.extensions.model.openai.compat.minimax`.
+
+## Thinking mode
+
+Pass MiniMax thinking options through `ModelCreationContext` when resolving the model:
+
+```java
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ModelCreationContext;
+import io.agentscope.core.model.ModelRegistry;
+
+Model model = ModelRegistry.resolve(
+    "minimax:MiniMax-M3",
+    ModelCreationContext.builder()
+        .enableThinking(false)
+        .build());
+```
+
+`enableThinking(false)` sends `thinking: {"type": "disabled"}` and `enableThinking(true)` sends `thinking: {"type": "adaptive"}`. MiniMax-M3 uses adaptive thinking by default when `thinking` is omitted; M2.x models keep thinking enabled even when disabled is requested. The formatter enables `reasoning_split` by default so MiniMax thinking content can be parsed as `ThinkingBlock`.
+
+## Compatibility notes
+
+The MiniMax formatter adapts OpenAI-style requests to the MiniMax OpenAI-compatible Chat Completions API. It maps `max_tokens` to `max_completion_tokens`, because MiniMax marks `max_tokens` as deprecated.
+
+MiniMax tool definitions support function tools, but the official schema does not include the tool schema `strict` field, so the default formatter omits `strict` even when a tool is registered with strict schema validation. MiniMax also does not document `tool_choice`, so explicit tool-choice settings are removed from MiniMax requests.
+
+The formatter removes unsupported OpenAI-only request fields such as `reasoning_effort`, `frequency_penalty`, `presence_penalty`, `thinking_budget`, `parallel_tool_calls`, `response_format`, and `seed`. Structured output uses the normal AgentScope fallback behavior by default because MiniMax does not document OpenAI `response_format` support for schema-constrained output.
+
+For compatible or self-hosted endpoints, pass `baseUrl`, `endpointPath`, generation options, or formatter overrides through `ModelCreationContext`.
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/dashscope.md
+
+# DashScope Model
+
+`agentscope-extensions-model-dashscope` integrates Alibaba Cloud DashScope Qwen models, including multimodal and reasoning-capable Qwen models.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-dashscope</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `DASHSCOPE_API_KEY`, then use either `dashscope:<model>` or the Qwen short form:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("dashscope:qwen-plus") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("qwen-plus") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+## Explicit builder
+
+Use the builder when you need DashScope-specific options such as endpoint type, thinking, search, encryption:
+
+```java
+import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
+
+DashScopeChatModel model = DashScopeChatModel.builder()
+    .apiKey(System.getenv("DASHSCOPE_API_KEY"))
+    .modelName("qwen-plus")
+    .stream(true)
+    .build();
+```
+
+## Spring Boot
+
+Spring Boot applications can use the DashScope starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-dashscope-spring-boot-starter</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Full builder options, formatters, credentials, and registry context details are covered in [Model](../../docs/building-blocks/model.md).
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/gemini.md
+
+# Gemini Model
+
+`agentscope-extensions-model-gemini` integrates Google Gemini models through the Gemini API and supports the Vertex AI path through explicit configuration.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-gemini</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `GEMINI_API_KEY`, then use the `gemini:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("gemini:gemini-2.0-flash") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+## Explicit builder
+
+Use the builder when you need custom API settings, Vertex AI credentials, formatter, transport, or generation options:
+
+```java
+import io.agentscope.extensions.model.gemini.GeminiChatModel;
+
+GeminiChatModel model = GeminiChatModel.builder()
+    .apiKey(System.getenv("GEMINI_API_KEY"))
+    .modelName("gemini-2.0-flash")
+    .streamEnabled(true)
+    .build();
+```
+
+## Spring Boot
+
+Spring Boot applications can use the Gemini starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-gemini-spring-boot-starter</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Full builder options, formatters, credentials, and registry context details are covered in [Model](../../docs/building-blocks/model.md).
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/anthropic.md
+
+# Anthropic Model
+
+`agentscope-extensions-model-anthropic` integrates Anthropic Claude models, including Anthropic-specific formatter and request DTO support.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-anthropic</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Set `ANTHROPIC_API_KEY`, then use the `anthropic:<model>` id:
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("anthropic:claude-sonnet-4.5") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+## Explicit builder
+
+Use the builder when you need a custom endpoint, formatter, transport, prompt caching, thinking, or generation options:
+
+```java
+import io.agentscope.extensions.model.anthropic.AnthropicChatModel;
+
+AnthropicChatModel model = AnthropicChatModel.builder()
+    .apiKey(System.getenv("ANTHROPIC_API_KEY"))
+    .modelName("claude-sonnet-4.5")
+    .stream(true)
+    .build();
+```
+
+## Spring Boot
+
+Spring Boot applications can use the Anthropic starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-anthropic-spring-boot-starter</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Full builder options, formatters, credentials, and registry context details are covered in [Model](../../docs/building-blocks/model.md).
+
+---
+
+Source: https://java.agentscope.io/_sources/v2/en/integration/model/ollama.md
+
+# Ollama Model
+
+`agentscope-extensions-model-ollama` integrates locally hosted Ollama models. It is useful for local development, private deployments, and offline model serving.
+
+## Add the dependency
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-ollama</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+## ModelRegistry
+
+Use the `ollama:<model>` id. `OLLAMA_BASE_URL` is optional and defaults to the local Ollama endpoint when omitted.
+
+```java
+ReActAgent agent = ReActAgent.builder()
+    .name("assistant")
+    .model("ollama:llama3") // Resolved internally by ModelRegistry.resolve(modelId)
+    .build();
+```
+
+## Explicit builder
+
+Use the builder when you need a non-default Ollama endpoint, formatter, transport, proxy, or Ollama options:
+
+```java
+import io.agentscope.extensions.model.ollama.OllamaChatModel;
+
+OllamaChatModel model = OllamaChatModel.builder()
+    .modelName("llama3")
+    .baseUrl("http://localhost:11434")
+    .build();
+```
+
+## Spring Boot
+
+Spring Boot applications can use the Ollama starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-ollama-spring-boot-starter</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Configure the local Ollama model with `agentscope.model.provider=ollama`. The base URL
+is optional and defaults to `http://localhost:11434`:
+
+```yaml
+agentscope:
+  model:
+    provider: ollama
+  ollama:
+    model-name: llama3
+    # base-url: http://localhost:11434
+```
+
+Full builder options, formatters, credentials, and registry context details are covered in [Model](../../docs/building-blocks/model.md).
 
 ---
 
@@ -9554,8 +10504,10 @@ AgentScope offers a few protocol adapters to let an Agent talk to the outside wo
 ## Choosing one
 
 - **Stream Agent events to a front-end UI (incl. ThinkingBlock)** → AG-UI
-- **Let other backend systems schedule the Agent over REST** → Agent Protocol
+- **Let other backend systems schedule the Agent over REST / host a remote subagent** → Agent Protocol
 - **Let multiple Agents (yours or third-party) call each other** → A2A
+
+> Layering: AG-UI is user-facing; Agent Protocol is the internal remote-subagent / task HTTP surface; A2A is external interop.
 
 ---
 
@@ -9675,19 +10627,40 @@ Source: https://java.agentscope.io/_sources/v2/en/integration/protocol/agui.md
 
 # AG-UI
 
-`agentscope-extensions-agui` converts AgentScope event streams into [AG-UI Protocol](https://github.com/ag-ui-protocol/ag-ui) events so front-end UIs (Vercel AG-UI, custom chat UIs) can render the Agent's runtime — text, tool calls, and reasoning (ThinkingBlock).
+## Compatibility Notes
 
-## When to use
+`agentscope-extensions-agui` converts AgentScope v2 `AgentEvent` streams into [AG-UI Protocol](https://github.com/ag-ui-protocol/ag-ui) events so front-end UIs can render an agent run in real time, including text, reasoning, tool calls, state, custom events, token usage, and HITL interrupts.
 
-- You need to feed AG-UI-compatible front-end components.
-- You want users to see tool calls and the model's reasoning streaming in.
+`AguiMessage.content` is represented as typed message content. For text-only code paths, use `getTextContent()`.
 
-## Add the dependency
+Multimodal input is supported, but document types are not supported yet.
+
+`AguiMessageConverter.toAguiMessage()` currently preserves text and tool-call fields only; image, audio, video, and document content blocks are not serialized back into AG-UI message content.
+
+## When To Use
+
+- You need to connect an AgentScope agent to an AG-UI-compatible front end or a custom chat UI.
+- You need to stream `RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `CUSTOM`, and related AG-UI events over SSE.
+- You need frontend tools, user-approval interrupts, runtime context propagation, or custom event-conversion extensions.
+
+## Add Dependencies
+
+For manual adapter usage, add:
 
 ```xml
 <dependency>
     <groupId>io.agentscope</groupId>
     <artifactId>agentscope-extensions-agui</artifactId>
+    <version>${agentscope.version}</version>
+</dependency>
+```
+
+Spring Boot applications can use the starter:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-agui-spring-boot-starter</artifactId>
     <version>${agentscope.version}</version>
 </dependency>
 ```
@@ -9702,7 +10675,8 @@ import io.agentscope.core.agui.model.RunAgentInput;
 import reactor.core.publisher.Flux;
 
 AguiAdapterConfig config = AguiAdapterConfig.builder()
-    .enableReasoning(true)        // emit ThinkingBlock as REASONING_* events
+    .enableReasoning(true)
+    .emitTokenUsage(true)
     .runTimeout(Duration.ofMinutes(5))
     .build();
 
@@ -9712,31 +10686,258 @@ AguiAgentAdapter adapter = new AguiAgentAdapter(agent, config);
 Flux<AguiEvent> events = adapter.run(runAgentInput);
 ```
 
-The front end provides `runAgentInput` (containing `threadId`, `runId`, `messages`, etc.). The adapter converts messages, calls the Agent's streaming API, and maps the events to AG-UI.
+The front end provides `RunAgentInput`, including `threadId`, `runId`, `messages`, `tools`, `state`等. The adapter converts AG-UI messages to AgentScope `Msg` objects, invokes v2 `streamEvents(...)`, and converts each `AgentEvent` to AG-UI events.
 
-## Event mapping
+## Event Mapping
 
-| AgentScope event / block | AG-UI event |
+The v2 path consumes `AgentEvent`. Built-in converters handle semantic mapping, and unmapped events fall back to the official `RAW` event.
+
+| AgentScope event / content             | AG-UI event |
+|----------------------------------------| --- |
+| `AgentStartEvent`                      | `RUN_STARTED` |
+| `AgentEndEvent`                        | `RUN_FINISHED` |
+| Text                              | `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` |
+| Thinking (`enableReasoning=true`) | `REASONING_MESSAGE_START` / `REASONING_MESSAGE_CONTENT` / `REASONING_MESSAGE_END` |
+| Tool-call and argument deltas          | `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` |
+| Tool result                            | `TOOL_CALL_RESULT` |
+| `CustomEvent`                          | `CUSTOM` |
+| token usage (`emitTokenUsage=true`)    | `CUSTOM`, `name=token_usage` |
+| Unmapped `AgentEvent`                  | `RAW`, with official `event` and `source` fields |
+
+Normal `RUN_STARTED` and `RUN_FINISHED` events are driven by upstream `AgentStartEvent` and `AgentEndEvent`. If a normal stream completes without an upstream `AgentEndEvent`, the adapter does not synthesize `RUN_FINISHED`. On errors, the adapter emits a `RUN_ERROR` with a `timestamp`, then emits a fallback `RUN_FINISHED`.
+
+## Subagent events
+
+By default (`emitSubagentEventsAsNative=false`), AgentEvents with a non-null `source` (child / remote subagent events) are **not** mapped to native `TEXT_MESSAGE_*` / `RUN_*` / tool-call events. They become AG-UI `CUSTOM` events under the `subagent.*` namespace so they do not pollute the parent run lifecycle or text stream:
+
+| CUSTOM `name` | Typical AgentEvent |
 | --- | --- |
-| `EventType.REASONING / SUMMARY` with `TextBlock` | `TEXT_MESSAGE_*` |
-| `EventType.REASONING / SUMMARY` with `ThinkingBlock` | `REASONING_*` (when `enableReasoning=true`) |
-| `ToolUseBlock` | `TOOL_CALL_START` |
-| `EventType.TOOL_RESULT` | `TOOL_CALL_END` |
+| `subagent.lifecycle` | `AgentStartEvent` / `AgentEndEvent` |
+| `subagent.text` | `TextBlockDeltaEvent` |
+| `subagent.thinking` | `ThinkingBlockDeltaEvent` |
+| `subagent.tool_call` | `ToolCallStartEvent` / `ToolCallEndEvent` |
+| `subagent.tool_result` | `ToolResultEndEvent` |
+| `subagent.require_confirm` | `RequireUserConfirmEvent` |
 
-## Spring Boot integration
+Each payload includes at least `source` and `type` (plus type-specific fields such as `delta` or `toolCallId`).
 
-The typical wire-up is a `@PostMapping("/ag-ui")` returning the `Flux<AguiEvent>` as SSE. Alternatively, use `agentscope-spring-boot-starter-agui` to register the controller automatically.
+To restore the previous behavior where child events used the same native converters as the parent:
 
-## Common configuration
+```java
+AguiAdapterConfig config = AguiAdapterConfig.builder()
+    .emitSubagentEventsAsNative(true)
+    .build();
+```
 
-| Field | Default | Notes |
-| --- | --- | --- |
-| `toolMergeMode` | `MERGE_FRONTEND_PRIORITY` | How front-end-defined tools merge with Agent-side tools |
-| `emitStateEvents` | `true` | Emit `STATE_*` events (e.g. thread state) |
-| `emitToolCallArgs` | `true` | Stream tool-call arguments |
-| `enableReasoning` | `false` | Emit ThinkingBlock as REASONING_* events |
-| `runTimeout` | `10m` | Per-run timeout |
-| `defaultAgentId` | `null` | Default `agentId` when none is provided |
+## AG-UI Base Event Properties
+
+Every `AguiEvent` supports the official base event properties: optional `timestamp` and `rawEvent`.
+
+The default config does not enable `BaseEventPropertiesEnricher`, so the framework does not add `timestamp` to every event by default and does not expose internal `AgentEvent` objects as `rawEvent` by default. Enable the default enricher explicitly if you want timestamps filled:
+
+```java
+AguiAdapterConfig config = AguiAdapterConfig.builder()
+    .baseEventPropertiesEnricherEnabled(true)
+    .build();
+```
+
+`BaseEventPropertiesEnricher` only fills a missing `timestamp`; it preserves existing timestamps and does not write `rawEvent`. To expose `rawEvent`, register a custom `AguiEventEnricher`.
+
+The Spring Boot starter does not implicitly enable the default base properties enricher. If you want that behavior, expose a `BaseEventPropertiesEnricher` bean or your own `AguiEventEnricher` bean.
+
+## Custom Converters And Enrichers
+
+`AgentEventConverter` extends or overrides semantic mapping. For the same `AgentEvent` type, a user converter overrides the built-in converter.
+
+```java
+@Bean
+AgentEventConverter customEventConverter() {
+    return new AgentEventConverter() {
+        @Override
+        public Set<Class<? extends AgentEvent>> eventTypes() {
+            return Set.of(CustomEvent.class);
+        }
+
+        @Override
+        public void convert(AgentEvent event, AguiStreamContext context) {
+            CustomEvent customEvent = (CustomEvent) event;
+            context.emit(new AguiEvent.Custom(
+                context.getThreadId(),
+                context.getRunId(),
+                customEvent.getName(),
+                customEvent.getValue()));
+        }
+    };
+}
+```
+
+`AguiEventEnricher` runs after conversion. It is intended for cross-cutting concerns such as `timestamp`, `rawEvent`, tracing fields, or other event decoration. It may modify, append, or filter converter output.
+
+```java
+@Bean
+AguiEventEnricher timestampEnricher() {
+    return (source, events, context) -> events.stream()
+        .map(event -> AguiEvents.withBaseProperties(
+            event,
+            event.timestamp() != null ? event.timestamp() : System.currentTimeMillis(),
+            event.rawEvent()))
+        .toList();
+}
+```
+
+The Spring Boot starter automatically collects `AgentEventConverter` and `AguiEventEnricher` beans and uses `orderedStream()` so `@Order` / `Ordered` are honored.
+
+## Token Usage
+
+Token usage is disabled by default. Manual config:
+
+```java
+AguiAdapterConfig config = AguiAdapterConfig.builder()
+    .emitTokenUsage(true)
+    .build();
+```
+
+Spring Boot config:
+
+```yaml
+agentscope:
+  agui:
+    emit-token-usage: true
+```
+
+When enabled, every `ModelCallEndEvent` with usage emits a `CUSTOM` event: `delta` is the current model-call usage. `cumulative` is the accumulated usage within the current AG-UI run.
+
+## RuntimeContext
+
+`AguiAgentAdapter.run(input, runtimeContext)` accepts a caller-provided `RuntimeContext`. The adapter copies the caller context first, then applies AG-UI protocol metadata so the required defaults are not lost.
+
+| RuntimeContext entry | Source |
+| --- | --- |
+| `sessionId` | `RunAgentInput.threadId` |
+| `RunAgentInput.class` | Full `RunAgentInput` |
+| `agui.threadId` | `RunAgentInput.threadId` |
+| `agui.runId` | `RunAgentInput.runId` |
+| `agui.messages` | `RunAgentInput.messages` |
+| `agui.tools` | `RunAgentInput.tools` |
+| `agui.context` | `RunAgentInput.context` |
+| `agui.state` | `RunAgentInput.state` |
+| `agui.forwardedProps` | `RunAgentInput.forwardedProps` |
+| `agui.resume` | `RunAgentInput.resume` |
+
+Because `sessionId` always comes from `threadId`, the same agent instance remains isolated across AG-UI threads.
+
+## Spring Boot Integration
+
+The starter registers MVC or WebFlux endpoints automatically. Common config:
+
+```yaml
+agentscope:
+  agui:
+    path-prefix: /agui
+    cors-enabled: true
+    run-timeout: 10m
+    default-agent-id: default
+    enable-path-routing: true
+    agent-id-header: X-Agent-Id
+    emit-state-events: true
+    emit-tool-call-args: true
+    emit-token-usage: false
+    enable-reasoning: false
+    server-side-memory: false
+```
+
+You can extend the default chain with beans:
+
+- `AgentEventConverter`: custom event semantic mapping.
+- `AguiEventEnricher`: cross-cutting event enrichment.
+- `AguiRuntimeContextResolver`: request-scoped `RuntimeContext` injection.
+- `AguiAgentAdapterFactory`: replacement for default `AguiAgentAdapter` construction.
+
+`AguiRuntimeContextResolver` can read the transport, path agent id, header agent id, headers, query params, and native Web request.
+
+```java
+@Bean
+AguiRuntimeContextResolver runtimeContextResolver() {
+    return request -> RuntimeContext.builder()
+        .put("tenantId", request.firstHeader("X-Tenant-Id"))
+        .put("traceId", request.firstHeader("X-Trace-Id"))
+        .build();
+}
+```
+
+`forwardedProps` comes from the client request body and is suitable for UI options or frontend context. Do not treat it as a trusted identity source; server-side user identity should come from authentication or a server-side resolver.
+
+## Frontend Tools And Merge Mode
+
+An AG-UI front end can pass tool schemas through `RunAgentInput.tools`. The adapter injects those tools into the agent toolkit at the start of one run and cleans them up after the run completes or is cancelled.
+
+| `ToolMergeMode` | Behavior |
+| --- | --- |
+| `FRONTEND_ONLY` | Use only frontend-provided tools and temporarily hide existing agent tools |
+| `AGENT_ONLY` | Ignore frontend-provided tools and use only the agent toolkit |
+| `MERGE_FRONTEND_PRIORITY` | Merge both sides; frontend tools win on name conflicts |
+
+The default is `MERGE_FRONTEND_PRIORITY`. Injection is run scoped and does not permanently mutate the agent toolkit.
+
+## HITL Interrupts
+
+When the model requests a tool and suspension is needed for user approval or external execution, the AG-UI adapter converts the suspended result into a `RUN_FINISHED` interrupt outcome:
+
+```json
+{
+  "type": "RUN_FINISHED",
+  "outcome": {
+    "type": "interrupt",
+    "interrupts": [
+      {
+        "reason": "tool_call",
+        "toolCallId": "call-1",
+        "message": "Need approval before running this tool",
+        "metadata": {
+          "toolName": "request_approval"
+        }
+      }
+    ]
+  }
+}
+```
+
+The front end can show an approval or external-execution UI. After the user acts, send the official `resume[]` field on the next `runAgent` request for the same `threadId`:
+
+```json
+{
+  "threadId": "thread-1",
+  "runId": "run-2",
+  "messages": [],
+  "resume": [
+    {
+      "interruptId": "reply-1:call-1",
+      "status": "resolved",
+      "payload": {
+        "approved": true
+      }
+    }
+  ]
+}
+```
+
+`status` supports the official `resolved` and `cancelled` values. For the common approval case where a user rejects a tool request, prefer `resolved` and express the business decision in `payload`, for example `{ "approved": false }`; use `cancelled` when the interrupt itself is cancelled.
+
+AgentScope Java bridges tool-call `resume[]` entries to the `ToolResultBlock` messages required by core so the suspended tool call can continue. Through the Spring `AguiRequestProcessor` entry point, the processor records the latest `RUN_FINISHED.outcome.interrupts[]` and resolves the real `toolCallId` by `interruptId`.
+
+The built-in resume path currently covers tool-call interrupts generated by the AG-UI adapter. Custom interrupts with different semantics usually need a custom `AgentEventConverter` / `AguiEventEnricher` or request-processing layer to interpret their `payload`.
+
+## Example Project
+
+See the complete example at [agentscope-examples/agui](https://github.com/agentscope-ai/agentscope-java/tree/main/agentscope-examples/agui):
+
+```bash
+export DASHSCOPE_API_KEY=your-key
+cd agentscope-examples/agui
+mvn spring-boot:run
+```
+
+Visit http://localhost:8080 after startup. The example demonstrates multi-agent routing, custom converters, custom enrichers, token usage, and HITL interrupts.
 
 ---
 
@@ -9751,6 +10952,17 @@ Source: https://java.agentscope.io/_sources/v2/en/integration/protocol/agent-pro
 - You want the Agent to be remotely scheduled like a cloud function.
 - An existing team uses an Agent Protocol client and you'd like to plug in directly.
 - You're embedding a Harness Agent in a Spring Boot service and want auto-exposed `/tasks` REST endpoints.
+- You're hosting a [remote subagent](../../docs/harness/subagent.md#remote-subagent) that another Harness parent calls over HTTP.
+
+## Protocol layering
+
+AgentScope uses different protocols for different trust / UX boundaries:
+
+| Layer | Role |
+| --- | --- |
+| **AG-UI** | User-facing chat UI event stream (browser ↔ app) |
+| **Agent Protocol** | Internal remote-subagent / task HTTP API (parent harness ↔ remote agent service) |
+| **A2A** | External agent-to-agent interop (separate extension; not part of this remote-subagent streaming/HITL work) |
 
 ## Add the dependency
 
@@ -9775,7 +10987,7 @@ agentscope:
     enabled: true
 ```
 
-The `/tasks` REST endpoints (per the Agent Protocol spec) are then registered automatically.
+The `/tasks` REST endpoints are then registered automatically.
 
 ## Concurrent execution
 
@@ -9793,13 +11005,108 @@ public HarnessAgent harnessAgent() {
 
 Concurrent requests for the same session are automatically serialized; different sessions run in parallel.
 
+## Endpoints
+
+### Submit a task
+
+`POST /tasks`
+
+```json
+{
+  "task_id": "task_123",
+  "agent_id": "researcher",
+  "input": "Summarize the latest release notes",
+  "context": {
+    "user_id": "u-1",
+    "parent_session_id": "sess-parent",
+    "stream": true,
+    "detail": "full",
+    "deny_rules": [
+      {
+        "tool_name": "bash",
+        "behavior": "DENY",
+        "source": "parent"
+      }
+    ]
+  }
+}
+```
+
+Optional `context` fields:
+
+| Field | Notes |
+| --- | --- |
+| `user_id` | Forwarded into the remote agent's `RuntimeContext` |
+| `parent_session_id` | Parent session identity (for tracing / correlation) |
+| `stream` | Whether the caller intends to consume SSE events |
+| `detail` | `status` (default) or `full` — `full` includes text/thinking deltas on the event stream |
+| `deny_rules` | Parent DENY permission rules to enforce on the remote side |
+
+Response on success: `{ "task_id", "status": "pending" }`.
+
+### Poll / wait / cancel
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/tasks/{taskId}` | Snapshot (`status`, result, errors, pending confirms) |
+| `GET` | `/tasks/{taskId}/wait?timeout_seconds=7200` | Block until terminal (or `awaiting_confirm`) |
+| `POST` | `/tasks/{taskId}/cancel` | Request cancellation |
+
+While the remote agent waits for tool confirmation, the snapshot reports `status: awaiting_confirm` but the stored `TaskStatus` remains `RUNNING` so parent barriers keep waiting.
+
+### Stream events (SSE)
+
+`GET /tasks/{taskId}/events`
+
+Server-Sent Events of agent progress. Requires `agentscope.agent-protocol.streaming-enabled=true` (default).
+
+Reconnect / resume:
+
+- Query param `from_seq` — start after this sequence number
+- Header `Last-Event-ID` — used when `from_seq` is omitted (same meaning)
+
+Each SSE message uses the event seq as `id`, the remote event type as `event`, and a JSON body as `data`.
+
+### Resume after HITL
+
+`POST /tasks/{taskId}/resume`
+
+```json
+{
+  "decisions": [
+    { "toolCallId": "call-1", "approved": true },
+    { "toolCallId": "call-2", "approved": false }
+  ]
+}
+```
+
+`tool_call_id` is also accepted as an alias for `toolCallId`. Requires `agentscope.agent-protocol.hitl-enabled=true` (default). On success returns `{ "task_id", "status": "running" }`.
+
+How remote HITL interacts with a calling parent harness is documented under [Remote authorization](../../docs/harness/subagent.md#remote-authorization).
+
 ## Configuration
 
 | Property | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `agentscope.agent-protocol.enabled` | boolean | `false` | Whether to register the `/tasks` REST endpoints |
+| `agentscope.agent-protocol.streaming-enabled` | boolean | `true` | Expose SSE `GET /tasks/{id}/events` |
+| `agentscope.agent-protocol.hitl-enabled` | boolean | `true` | Pause tasks for tool confirmation and accept `/resume` |
+| `agentscope.agent-protocol.sse-replay-buffer-size` | int | `256` | Per-task replay buffer for late SSE subscribers |
+| `agentscope.agent-protocol.sse-timeout-ms` | long | `10800000` | Max SSE subscription duration (ms) |
 
-> When disabled (the default) the dependency stays inert — no REST endpoints are exposed, safe to ship.
+Example:
+
+```yaml
+agentscope:
+  agent-protocol:
+    enabled: true
+    streaming-enabled: true
+    hitl-enabled: true
+    sse-replay-buffer-size: 256
+    sse-timeout-ms: 10800000
+```
+
+> When `enabled` is `false` (the default) the dependency stays inert — no REST endpoints are exposed, safe to ship.
 
 ## Workspace integration
 

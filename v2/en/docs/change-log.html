@@ -4,7 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <meta property="article:modified_time" content="2026-07-19T13:38:12+00:00" /><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Release Notes" href="others/release-notes.html"><link rel="prev" title="Channel" href="harness/channel.html">
+    <meta property="article:modified_time" content="2026-08-08T15:37:36+00:00" /><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Release Notes" href="others/release-notes.html"><link rel="prev" title="Channel" href="harness/channel.html">
         <link rel="canonical" href="https://java.agentscope.io/v2/en/docs/change-log.html">
         <link rel="prefetch" href="../../../_static/logo.svg" as="image">
 
@@ -19,7 +19,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=6f24c6f4" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/homepage.css?v=16a56cbd" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/homepage.css?v=f1c207f0" />
     
     
 
@@ -707,21 +707,33 @@
 <p class="caption" role="heading"><span class="caption-text">v2 · Integration</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../integration/overview.html">Overview</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/memory/index.html">Memory</a><input aria-label="Toggle navigation of Memory" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/model/index.html">Model Providers</a><input aria-label="Toggle navigation of Model Providers" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/openai.html">OpenAI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/deepseek.html">DeepSeek</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/glm.html">GLM</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/kimi.html">Kimi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/minimax.html">MiniMax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/dashscope.html">DashScope</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/gemini.html">Gemini</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/anthropic.html">Anthropic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../integration/model/ollama.html">Ollama</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/memory/index.html">Memory</a><input aria-label="Toggle navigation of Memory" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/memory/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/memory/mem0.html">Mem0</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/memory/bailian.html">Bailian Memory</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/memory/reme.html">ReMe</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/session/index.html">Agent State Store</a><input aria-label="Toggle navigation of Agent State Store" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/session/index.html">Agent State Store</a><input aria-label="Toggle navigation of Agent State Store" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/session/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/session/mysql.html">MySQL State Store</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/session/redis.html">Redis State Store</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/session/oss.html">OSS State Store</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/rag/index.html">RAG Knowledge Base</a><input aria-label="Toggle navigation of RAG Knowledge Base" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/rag/index.html">RAG Knowledge Base</a><input aria-label="Toggle navigation of RAG Knowledge Base" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/rag/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/rag/simple.html">Simple</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/rag/bailian.html">Bailian Knowledge</a></li>
@@ -730,28 +742,28 @@
 <li class="toctree-l2"><a class="reference internal" href="../integration/rag/ragflow.html">RAGFlow</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/skill/index.html">Skill Repository</a><input aria-label="Toggle navigation of Skill Repository" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/skill/index.html">Skill Repository</a><input aria-label="Toggle navigation of Skill Repository" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/skill/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/skill/git-repository.html">Git Skill Repository</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/skill/mysql-repository.html">MySQL Skill Repository</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/skill/postgresql-repository.html">PostgreSQL Skill Repository</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/protocol/index.html">Agent Protocols</a><input aria-label="Toggle navigation of Agent Protocols" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/protocol/index.html">Agent Protocols</a><input aria-label="Toggle navigation of Agent Protocols" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/protocol/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/protocol/a2a.html">A2A</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/protocol/agui.html">AG-UI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/protocol/agent-protocol.html">Agent Protocol</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/infrastructure/index.html">Infrastructure</a><input aria-label="Toggle navigation of Infrastructure" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/infrastructure/index.html">Infrastructure</a><input aria-label="Toggle navigation of Infrastructure" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/infrastructure/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/infrastructure/higress.html">Higress</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/infrastructure/nacos.html">Nacos</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/infrastructure/scheduler.html">Scheduler</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/ecosystem/index.html">Ecosystem</a><input aria-label="Toggle navigation of Ecosystem" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../integration/ecosystem/index.html">Ecosystem</a><input aria-label="Toggle navigation of Ecosystem" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../integration/ecosystem/overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/ecosystem/chat-completions-web.html">Chat Completions Web</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../integration/ecosystem/studio.html">Studio</a></li>
@@ -762,7 +774,26 @@
 <p class="caption" role="heading"><span class="caption-text">v2 · Blogs</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-v2-release.html">AgentScope 2.0 Release</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-v2-explained.html">AgentScope 2.0 Production-Ready - Enterprise Harness Explained</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-v1-harness.html">AgentScope Java 1.1 · Harness</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-v1-builder.html">AgentScope Builder Release</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-v2-coding-agent.html">The Second Half of Coding Agents: From Personal Efficiency to Org-Level Engineering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/managed-agents-agentscope-rumtime.html">Managed Agents Background</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/managed-agents-agentscope-rumtime.html#why-agentscope-2-0-is-a-good-foundation-for-managed-agents">Why AgentScope 2.0 Is a Good Foundation for Managed Agents</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/managed-agents-agentscope-rumtime.html#enterprise-managed-agents-platform-in-detail">Enterprise Managed Agents Platform in Detail</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/managed-agents-agentscope-rumtime.html#summary">Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release.html">What Is AgentScope Service</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release.html#architecture-overview">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release.html#how-agents-attach">How Agents Attach</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release.html#try-it-locally">Try It Locally</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release.html#roadmap-closing">Roadmap &amp; Closing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../blogs/agentscope-service-release-tech.html">AgentScope Service Explained: Control Plane, Data Plane &amp; Recoverable Runtime</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../blogs/usecases/index.html">Customer Use Cases</a><input aria-label="Toggle navigation of Customer Use Cases" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../blogs/usecases/finxscope.html">FinXScope: A Financial-Grade Agent Foundation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../blogs/usecases/logistics.html">From Config-Driven to Business-Native: Enterprise Agent Practice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../blogs/usecases/aidc-logistics.html">AIDC Logistics: Enterprise Agent Development Practice</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">v2 · Community</span></p>
 <ul>
@@ -806,21 +837,33 @@
 <p class="caption" role="heading"><span class="caption-text">v2 · 集成</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../zh/integration/overview.html">概览</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/memory/index.html">记忆</a><input aria-label="Toggle navigation of 记忆" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/model/index.html">模型提供商</a><input aria-label="Toggle navigation of 模型提供商" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/openai.html">OpenAI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/deepseek.html">DeepSeek</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/glm.html">GLM</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/kimi.html">Kimi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/minimax.html">MiniMax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/dashscope.html">DashScope</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/gemini.html">Gemini</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/anthropic.html">Anthropic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/integration/model/ollama.html">Ollama</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/memory/index.html">记忆</a><input aria-label="Toggle navigation of 记忆" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/memory/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/memory/mem0.html">Mem0</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/memory/bailian.html">百炼记忆</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/memory/reme.html">ReMe</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/session/index.html">Agent 状态存储</a><input aria-label="Toggle navigation of Agent 状态存储" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/session/index.html">Agent 状态存储</a><input aria-label="Toggle navigation of Agent 状态存储" class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/session/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/session/mysql.html">MySQL 状态存储</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/session/redis.html">Redis 状态存储</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/session/oss.html">OSS 状态存储</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/rag/index.html">RAG 知识库</a><input aria-label="Toggle navigation of RAG 知识库" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/rag/index.html">RAG 知识库</a><input aria-label="Toggle navigation of RAG 知识库" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/rag/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/rag/simple.html">Simple</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/rag/bailian.html">百炼知识库</a></li>
@@ -829,28 +872,28 @@
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/rag/ragflow.html">RAGFlow</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/skill/index.html">技能仓库</a><input aria-label="Toggle navigation of 技能仓库" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/skill/index.html">技能仓库</a><input aria-label="Toggle navigation of 技能仓库" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/skill/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/skill/git-repository.html">Git 技能仓库</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/skill/mysql-repository.html">MySQL 技能仓库</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/skill/postgresql-repository.html">PostgreSQL 技能仓库</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/protocol/index.html">智能体协议</a><input aria-label="Toggle navigation of 智能体协议" class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/protocol/index.html">智能体协议</a><input aria-label="Toggle navigation of 智能体协议" class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/protocol/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/protocol/a2a.html">A2A</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/protocol/agui.html">AG-UI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/protocol/agent-protocol.html">Agent Protocol</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/infrastructure/index.html">基础设施</a><input aria-label="Toggle navigation of 基础设施" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/infrastructure/index.html">基础设施</a><input aria-label="Toggle navigation of 基础设施" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/infrastructure/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/infrastructure/higress.html">Higress</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/infrastructure/nacos.html">Nacos</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/infrastructure/scheduler.html">Scheduler</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/ecosystem/index.html">生态扩展</a><input aria-label="Toggle navigation of 生态扩展" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/integration/ecosystem/index.html">生态扩展</a><input aria-label="Toggle navigation of 生态扩展" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/ecosystem/overview.html">概览</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/ecosystem/chat-completions-web.html">Chat Completions Web</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../zh/integration/ecosystem/studio.html">Studio</a></li>
@@ -861,8 +904,26 @@
 <p class="caption" role="heading"><span class="caption-text">v2 · 博客</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-v2-release.html">AgentScope 2.0 发布</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-v2-explained.html">AgentScope 2.0 生产可用，企业级 Harness 技术全解析</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-v1-harness.html">AgentScope Java 1.1 · Harness</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-v1-builder.html">AgentScope Builder 发布</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-v2-coding-agent.html">Coding Agent 的下半场：从个人提效到组织级研发体系</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/managed-agents-agentscope-rumtime.html">Managed Agents 背景</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/managed-agents-agentscope-rumtime.html#agentscope-2-0-managed-agents">为什么 AgentScope 2.0 适合做 Managed Agents 底座</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/managed-agents-agentscope-rumtime.html#id1">企业级 Managed Agents 平台详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/managed-agents-agentscope-rumtime.html#id10">总结</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release.html">什么是 AgentScope Service</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release.html#id1">整体架构</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release.html#agent">Agent 如何接入</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release.html#id9">本地快速体验</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release.html#roadmap">Roadmap &amp; 总结</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../zh/blogs/agentscope-service-release-tech.html">AgentScope Service 技术解读：控制面、数据面与可恢复的 Agent 运行时</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../zh/blogs/usecases/index.html">客户实践案例</a><input aria-label="Toggle navigation of 客户实践案例" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/blogs/usecases/finxscope.html">FinXScope：基于 AgentScope 构建金融级智能体底座</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/blogs/usecases/logistics.html">从配置驱动到业务原生：企业级 Agent 开发实践</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../zh/blogs/usecases/aidc-logistics.html">AIDC 物流：企业级 Agent 开发实践</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">v2 · 社区</span></p>
 <ul>
@@ -1226,7 +1287,7 @@
 <ul>
 <li><p><code class="docutils literal notranslate"><span class="pre">io.agentscope.core.agent.Event</span></code>, <code class="docutils literal notranslate"><span class="pre">EventType</span></code>, <code class="docutils literal notranslate"><span class="pre">EventSource</span></code></p></li>
 <li><p>Still consumed internally by the harness (subagent event forwarding: <code class="docutils literal notranslate"><span class="pre">SubAgentTool</span></code> / <code class="docutils literal notranslate"><span class="pre">SubagentEventBus</span></code> / <code class="docutils literal notranslate"><span class="pre">DefaultAgentManager</span></code> / <code class="docutils literal notranslate"><span class="pre">AgentSpawnTool</span></code>), AGUI, A2A, chat-completions-web, and Kotlin extension modules as the event-bus / adapter input. They will be flipped to <code class="docutils literal notranslate"><span class="pre">forRemoval</span> <span class="pre">=</span> <span class="pre">true</span></code> only after those modules migrate to <code class="docutils literal notranslate"><span class="pre">AgentEvent</span></code>, so the entire downstream is not warning-flooded in a single release.</p></li>
-<li><p><strong>Current gap:</strong> <code class="docutils literal notranslate"><span class="pre">HarnessAgent.streamEvents(...)</span></code> does <strong>not</strong> forward subagent events yet — the <code class="docutils literal notranslate"><span class="pre">AgentEvent</span></code> hierarchy has no equivalent <code class="docutils literal notranslate"><span class="pre">EventSource</span></code> channel. Callers that need the child-agent stream must stay on the deprecated <code class="docutils literal notranslate"><span class="pre">stream(...)</span></code> path until that channel lands.</p></li>
+<li><p>Subagent events are forwarded on <code class="docutils literal notranslate"><span class="pre">HarnessAgent.streamEvents(...)</span></code> with a non-null <code class="docutils literal notranslate"><span class="pre">source</span></code> path (including remote Agent Protocol children when <code class="docutils literal notranslate"><span class="pre">remoteStreaming</span></code> is enabled).</p></li>
 </ul>
 </li>
 </ul>
@@ -1286,6 +1347,18 @@
 <section id="what-s-new">
 <h2>What’s New<a class="headerlink" href="#what-s-new" title="Link to this heading">¶</a></h2>
 <p>The capabilities below are additive in 2.0 — none of them break 1.x code. The Migration Guide above already covers the event system, message refactor, and middleware mechanism, so they are not repeated here.</p>
+<section id="ag-ui-v2">
+<h3>AG-UI v2<a class="headerlink" href="#ag-ui-v2" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The AG-UI adapter now uses the v2 <code class="docutils literal notranslate"><span class="pre">streamEvents()</span></code> path. Normal <code class="docutils literal notranslate"><span class="pre">RUN_STARTED</span></code> / <code class="docutils literal notranslate"><span class="pre">RUN_FINISHED</span></code> events are converted from <code class="docutils literal notranslate"><span class="pre">AgentStartEvent</span></code> / <code class="docutils literal notranslate"><span class="pre">AgentEndEvent</span></code>; error paths emit <code class="docutils literal notranslate"><span class="pre">RUN_ERROR</span></code> and a fallback <code class="docutils literal notranslate"><span class="pre">RUN_FINISHED</span></code>.</p></li>
+<li><p>New <code class="docutils literal notranslate"><span class="pre">AgentEventConverter</span></code> and <code class="docutils literal notranslate"><span class="pre">AguiEventEnricher</span></code> extension points: converters handle semantic mapping, while enrichers handle cross-cutting properties such as <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> / <code class="docutils literal notranslate"><span class="pre">rawEvent</span></code>. The Spring Boot starter automatically collects both bean types.</p></li>
+<li><p>Every <code class="docutils literal notranslate"><span class="pre">AguiEvent</span></code> supports AG-UI base event properties. <code class="docutils literal notranslate"><span class="pre">BaseEventPropertiesEnricher</span></code> is disabled by default; when explicitly enabled, it only fills missing <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> values and does not default <code class="docutils literal notranslate"><span class="pre">rawEvent</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">AguiAdapterConfig.emitTokenUsage</span></code> can emit <code class="docutils literal notranslate"><span class="pre">CUSTOM</span> <span class="pre">token_usage</span></code> events with model-call delta and run-level cumulative token usage.</p></li>
+<li><p><strong>Behavior change:</strong> AgentEvents with <code class="docutils literal notranslate"><span class="pre">source</span> <span class="pre">!=</span> <span class="pre">null</span></code> (subagent events) are emitted as AG-UI <code class="docutils literal notranslate"><span class="pre">CUSTOM</span></code> events (<code class="docutils literal notranslate"><span class="pre">subagent.lifecycle</span></code>, <code class="docutils literal notranslate"><span class="pre">subagent.text</span></code>, <code class="docutils literal notranslate"><span class="pre">subagent.thinking</span></code>, <code class="docutils literal notranslate"><span class="pre">subagent.tool_call</span></code>, <code class="docutils literal notranslate"><span class="pre">subagent.tool_result</span></code>, <code class="docutils literal notranslate"><span class="pre">subagent.require_confirm</span></code>) instead of native <code class="docutils literal notranslate"><span class="pre">TEXT_MESSAGE_*</span></code> / <code class="docutils literal notranslate"><span class="pre">RUN_*</span></code>. Set <code class="docutils literal notranslate"><span class="pre">emitSubagentEventsAsNative(true)</span></code> to restore the legacy native mapping.</p></li>
+<li><p>The Spring Boot starter supports <code class="docutils literal notranslate"><span class="pre">AguiRuntimeContextResolver</span></code>, custom <code class="docutils literal notranslate"><span class="pre">AguiAgentAdapterFactory</span></code>, frontend tool injection / merge mode, and HITL interrupt output.</p></li>
+</ul>
+<p>Detail → <a class="reference internal" href="../integration/protocol/agui.html"><span class="std std-doc">AG-UI</span></a></p>
+</section>
 <section id="toolkit-permission">
 <h3>Toolkit &amp; Permission<a class="headerlink" href="#toolkit-permission" title="Link to this heading">¶</a></h3>
 <p>Tool execution is the main extension surface in 2.0, and the permission system sits directly on its execution path — so we present them together.</p>
@@ -1406,7 +1479,7 @@
             Made with 
             <a href="https://github.com/pradyunsg/furo">Furo</a>
             <div class="last-updated">
-              Last updated on 2026-07-19</div>
+              Last updated on 2026-08-08</div>
           </div>
           <div class="right-details">
             <div class="icons">
@@ -1469,6 +1542,7 @@
 </ul>
 </li>
 <li><a class="reference internal" href="#what-s-new">What’s New</a><ul>
+<li><a class="reference internal" href="#ag-ui-v2">AG-UI v2</a></li>
 <li><a class="reference internal" href="#toolkit-permission">Toolkit &amp; Permission</a></li>
 <li><a class="reference internal" href="#model-fault-tolerance-and-credentials">Model fault tolerance and credentials</a></li>
 <li><a class="reference internal" href="#workspace-harness-module">Workspace (Harness module)</a></li>
