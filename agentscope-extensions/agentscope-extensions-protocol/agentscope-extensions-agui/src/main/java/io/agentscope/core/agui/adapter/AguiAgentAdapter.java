@@ -21,6 +21,7 @@ import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.agent.StreamOptions;
+import io.agentscope.core.agui.AguiUtil;
 import io.agentscope.core.agui.adapter.strategy.AgentEventConverterRegistry;
 import io.agentscope.core.agui.adapter.strategy.AguiStreamContext;
 import io.agentscope.core.agui.converter.AguiMessageConverter;
@@ -85,7 +86,7 @@ public class AguiAgentAdapter {
     public static final String RUNTIME_CONTEXT_STATE_KEY = "agui.state";
     public static final String RUNTIME_CONTEXT_FORWARDED_PROPS_KEY = "agui.forwardedProps";
     public static final String RUNTIME_CONTEXT_RESUME_KEY = "agui.resume";
-    public static final String RUNTIME_CONTEXT_RESUME_TOOL_CALL_IDS_KEY = "agui.resume.toolCallIds";
+    public static final String RUNTIME_CONTEXT_RESUME_INTERRUPTS_KEY = "agui.resume.interrupts";
 
     private final Agent agent;
     private final AguiAdapterConfig config;
@@ -147,7 +148,7 @@ public class AguiAgentAdapter {
                     // Convert AG-UI messages and official resume entries to AgentScope messages.
                     List<Msg> msgs =
                             messageConverter.toMsgList(
-                                    input, resumeToolCallIds(effectiveRuntimeContext));
+                                    input, resumeInterrupts(effectiveRuntimeContext));
 
                     // Create stream options - use incremental mode for true streaming
                     StreamOptions options =
@@ -207,7 +208,7 @@ public class AguiAgentAdapter {
             return new AgentStream(
                     convertAgentEvents(events, context), () -> finishPendingEvents(context));
         }
-        if (isHarnessAgent(agent)) {
+        if (AguiUtil.isHarnessAgent(agent)) {
             AguiStreamContext context = new AguiStreamContext(threadId, runId, config, input);
             Flux<AgentEvent> events =
                     Objects.requireNonNull(
@@ -274,17 +275,6 @@ public class AguiAgentAdapter {
         }
     }
 
-    private static boolean isHarnessAgent(Agent agent) {
-        Class<?> type = agent.getClass();
-        while (type != null) {
-            if ("io.agentscope.harness.agent.HarnessAgent".equals(type.getName())) {
-                return true;
-            }
-            type = type.getSuperclass();
-        }
-        return false;
-    }
-
     /**
      * Build the runtime context used for the agent invocation.
      *
@@ -312,21 +302,22 @@ public class AguiAgentAdapter {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, String> resumeToolCallIds(RuntimeContext runtimeContext) {
+    private Map<String, AguiEvent.Interrupt> resumeInterrupts(RuntimeContext runtimeContext) {
         if (runtimeContext == null) {
             return Map.of();
         }
-        Object value = runtimeContext.get(RUNTIME_CONTEXT_RESUME_TOOL_CALL_IDS_KEY);
+        Object value = runtimeContext.get(RUNTIME_CONTEXT_RESUME_INTERRUPTS_KEY);
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();
         }
-        Map<String, String> toolCallIds = new LinkedHashMap<>();
+        Map<String, AguiEvent.Interrupt> interrupts = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (entry.getKey() instanceof String key && entry.getValue() instanceof String id) {
-                toolCallIds.put(key, id);
+            if (entry.getKey() instanceof String key
+                    && entry.getValue() instanceof AguiEvent.Interrupt interrupt) {
+                interrupts.put(key, interrupt);
             }
         }
-        return Map.copyOf(toolCallIds);
+        return Map.copyOf(interrupts);
     }
 
     private ToolInjection injectFrontendTools(RunAgentInput input) {
@@ -393,7 +384,9 @@ public class AguiAgentAdapter {
                         mapErrorCode(error),
                         System.currentTimeMillis(),
                         null));
-        events.add(new AguiEvent.RunFinished(threadId, runId));
+        if (config.isEmitRunFinishedAfterError()) {
+            events.add(new AguiEvent.RunFinished(threadId, runId));
+        }
         return Flux.fromIterable(events);
     }
 
