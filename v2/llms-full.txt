@@ -1513,6 +1513,24 @@ ReActAgent agent =
                 .build();
 ```
 
+### FinalAnswerFilterMiddleware
+
+`FinalAnswerFilterMiddleware` exposes only the text from the final ReAct reasoning round. Text from rounds that produce tool calls is suppressed, while tool and other non-text events continue to stream normally.
+
+```java
+import io.agentscope.core.middleware.FinalAnswerFilterMiddleware;
+
+ReActAgent agent =
+        ReActAgent.builder()
+                .name("assistant")
+                .model(model)
+                .toolkit(toolkit)
+                .middleware(new FinalAnswerFilterMiddleware())
+                .build();
+```
+
+The middleware buffers each round's text until the model call ends, because it cannot know whether the round is final until no tool call is observed.
+
 ## Custom middleware
 
 Implement `MiddlewareBase` (`io.agentscope.core.middleware`) and override only the hooks you need.
@@ -4643,6 +4661,8 @@ CompactionConfig.builder()
 
 `MemoryConfig` is the single place to configure flush / consolidation prompts, throttling, retention, and the per-call flush trigger. Every field has a default; not calling `.memory(...)` reproduces the historical behaviour bit-for-bit.
 
+Per-call flush and background consolidation have independent throttle windows. In both cases, the first eligible `call()` runs the work immediately; a minimum gap limits only subsequent runs and is not an initial delay.
+
 ### Example 1: throttle per-call flush to save tokens
 
 A flush LLM call after every agent invocation can add up on long sessions. Throttle it to at most once every 10 minutes:
@@ -4659,6 +4679,7 @@ HarnessAgent.builder()
 Notes:
 
 - `THROTTLED` only affects **path 1** (per-call flush). The flush embedded in compaction (path 2) and the overflow flush (path 3) still fire on their own triggers — compaction is rare, so those two are infrequent by construction.
+- The first eligible call flushes immediately; `Duration.ofMinutes(10)` limits only later per-call flushes.
 - **Offload is unaffected**, the session JSONL is still written in full every call. `session_search` and session resumption keep working.
 
 ### Example 2: disable per-call flush entirely
@@ -4704,7 +4725,7 @@ Now flush only happens when compaction does (same cost as raw compaction).
 
 ```java
 .memory(MemoryConfig.builder()
-    .consolidationMinGap(Duration.ofHours(2))   // background merge at most every 2h
+    .consolidationMinGap(Duration.ofHours(2))   // first call may run; later runs at least 2h apart
     .dailyFileRetentionDays(30)                 // archive daily logs after 30 days
     .sessionRetentionDays(60)                   // prune session JSONL after 60 days
     .consolidationMaxTokens(8_000)              // raise MEMORY.md cap to 8K tokens
@@ -4737,7 +4758,7 @@ HarnessAgent.builder()
 | `flushPrompt` | `null` (uses `DEFAULT_FLUSH_PROMPT`) | SYSTEM prompt for path 1 |
 | `consolidationPrompt` | `null` (uses `DEFAULT_CONSOLIDATION_PROMPT`) | Template for path 2 (must contain two `%d`) |
 | `consolidationMaxTokens` | `4_000` | Token cap for `MEMORY.md` |
-| `consolidationMinGap` | `30 min` | Throttle gap for background maintenance |
+| `consolidationMinGap` | `30 min` | Gap between background maintenance runs; the first eligible call runs immediately |
 | `dailyFileRetentionDays` | `90` | Days before a daily log moves to `memory/archive/` |
 | `sessionRetentionDays` | `180` | Days before a `*.log.jsonl` is pruned |
 | `flushTrigger` | `FlushTrigger.always()` | `ALWAYS` / `NEVER` / `THROTTLED(Duration)` |
@@ -4772,11 +4793,13 @@ When the model sees a "MEMORY truncated" note in the prompt, it typically calls 
 
 ## Background maintenance
 
-When memory is enabled, a throttled background job also runs (triggered at each `call()` end with a minimum gap, default ~30 minutes max):
+When memory is enabled, a throttled background job also runs. The first eligible `call()` runs it immediately; later calls observe the minimum gap (30 minutes by default):
 
 - Archives daily logs older than `dailyFileRetentionDays` (default 90 days) to `memory/archive/`
 - Runs one `MEMORY.md` consolidation pass
 - Prunes session logs older than `sessionRetentionDays` (default 180 days)
+
+Entering maintenance does not necessarily call the model: consolidation skips the LLM request when there are no new daily ledger entries since the last successful consolidation. `FlushTrigger.never()` does not disable this maintenance path.
 
 All thresholds are tunable via `.memory(MemoryConfig.builder()...)`, though most projects don't need to touch them.
 
@@ -5573,6 +5596,8 @@ The agent-sandbox backend does not `kubectl exec` into the container; it talks t
 
 The `Sandbox` abstraction's primary data-plane entry point is `exec(command)`. This is deliberate — tool semantics like `edit_file` / `grep_files` (regex, string replacement, globbing) cannot be expressed through a small set of file-API endpoints; running shell scripts against a standard toolchain inside the image is the only portable answer. The file API (upload/download) handles pure byte transfer only: workspace snapshots and single-file upload/download go through it (backends declare the capability by implementing the optional `SandboxFileTransfer` interface); everything else goes through `execute`. Which also means: **the image contract is part of the sandbox interface** — run the conformance check above before switching images.
 
+**Crossing the boundary from the model's point of view.** The file API (upload/download) above is an internal mechanism — invisible to the LLM, and `FilesystemTool` exposes no transfer tools. The supported way for a sandboxed agent to hand an artifact it produced to a destination outside the sandbox is the generic **`deliver_artifact`** tool. It is registered only when you configure an `ArtifactDeliveryTarget` via `HarnessAgent.builder().artifactDeliveryTarget(...)`. The SPI stays business-agnostic — `deliver(RuntimeContext, ArtifactDeliveryRequest) -> ArtifactDeliveryResult` — so destination logic (e.g. WebDAV upload) lives in your application. The tool downloads the file bytes from the sandbox workspace and delegates the transport to the target. Without a configured target, the sandbox workspace prompt states plainly that files cannot leave the container.
+
 ## Kubernetes state persistence: PVC is the first layer
 
 The Kubernetes store is fully based on agent-sandbox: sandbox pods are managed by the agent-sandbox controller, and image, resources, and storage are all declared cluster-side in a `SandboxTemplate` / `SandboxWarmPool` — the Java side only claims instances (`SandboxClaim`) and connects. This makes it different from other stores in one important way: **workspace data persistence is primarily the PVC's job, not the Harness snapshot's**. The two layers each own one thing:
@@ -5698,6 +5723,7 @@ top_p: 0.95                   # optional
 hidden: false                 # true = not listed to the model (still callable programmatically)
 mode: subagent                # primary / subagent / all (default all); primary can't be spawned
 expose_to_user: true          # optional tri-state; force/forbid user exposure (omit = no opinion)
+enable_pending_tool_recovery: true # optional; omit to inherit the parent's recovery setting
 tools: [read_file, grep_files]   # optional; allowlist over inherited tools
 ---
 
@@ -5730,6 +5756,15 @@ HarnessAgent.builder()
 ```
 
 Three sources are mutually exclusive: `workspace(...)`, `inlineAgentsBody(...)`, `url(...)` — pick one.
+
+Automatically built local subagents, including `general-purpose`, inherit the parent's
+`HarnessAgent.Builder.enablePendingToolRecovery(...)` setting (default `false`). A declaration can
+override it with `.enablePendingToolRecovery(true)` or `.enablePendingToolRecovery(false)`; `null`
+inherits. Workspace specs accept `enable_pending_tool_recovery` (or `enablePendingToolRecovery`).
+When enabled, a new ordinary message repairs orphaned pending tool calls with synthetic error
+results, including calls loaded from a failed session. Pending permission confirmations still
+require confirmation; empty-input resume and caller-supplied tool results retain their existing
+behavior. Remote agents and custom factories configure recovery themselves.
 
 ### Built-in `general-purpose`
 
