@@ -89,8 +89,10 @@ public class ConversationCompactor {
      * @param config               compaction configuration
      * @param agentId              agent identifier used for the session history reference
      * @param sessionId            session identifier used for the session history reference
-     * @return {@code Optional.empty()} when no compaction was needed; otherwise the replacement
-     *         message list consisting of {@code [summaryUserMsg] + preservedTail}
+     * @return {@code Optional.empty()} when the conversation is unchanged; otherwise a
+     *         replacement message list. The replacement contains lightweight reductions when
+     *         summarization is skipped, or {@code [summaryUserMsg] + preservedTail} after
+     *         summarization.
      */
     public Mono<Optional<List<Msg>>> compactIfNeeded(
             RuntimeContext rc,
@@ -249,8 +251,11 @@ public class ConversationCompactor {
 
         int cutoff = determineCutoffIndex(messages, totalTokens, config);
         if (cutoff <= 0) {
-            log.debug("Compaction triggered but safe cutoff is 0 — skipping");
-            return Mono.just(Optional.empty());
+            log.debug("Compaction triggered but safe cutoff is 0 — returning lightweight result");
+            return Mono.just(
+                    messages.equals(conversationMessages)
+                            ? Optional.empty()
+                            : Optional.of(messages));
         }
 
         // Keep prior summaries in the summarization input so each compaction builds on the
@@ -613,7 +618,12 @@ public class ConversationCompactor {
      * results with a head+tail preview when the total prunable amount exceeds
      * {@code minimumTokens}.
      *
-     * <p>Non-LLM operation. Returns the original list if no pruning occurred.
+     * <p>Non-LLM operation. Returns the original list if no pruning occurred. The pruned block
+     * keeps its metadata and execution state — only the output text is replaced with the
+     * preview — so downstream consumers of markers such as {@code agentscope.tool_result_evicted}
+     * or {@link ToolResultBlock#METADATA_SUSPENDED} keep working. The preserved markers describe
+     * the pre-prune payload, though: consumers must not assume the block text is the full
+     * payload (e.g. an eviction pointer's referenced content is no longer inline after pruning).
      */
     List<Msg> pruneToolResults(List<Msg> messages, CompactionConfig.PruneConfig pruneConfig) {
         if (pruneConfig == null || messages == null || messages.isEmpty()) {
@@ -648,7 +658,8 @@ public class ConversationCompactor {
                 if (text.isBlank()) {
                     continue;
                 }
-                int tokens = TokenCounterUtil.calculateToken(List.of(msg));
+                // Charge this result only, not every sibling in a batched tool message.
+                int tokens = TokenCounterUtil.calculateToken(List.of(msg.withContent(List.of(tr))));
                 if (protectedTokens < protectBudget) {
                     protectedTokens += tokens;
                     continue;
@@ -678,6 +689,8 @@ public class ConversationCompactor {
                             .id(tr.getId())
                             .name(tr.getName())
                             .output(List.of(TextBlock.builder().text(preview).build()))
+                            .metadata(tr.getMetadata())
+                            .state(tr.getState())
                             .build();
             newBlocks.set(blockIdx, pruned);
             result.set(
@@ -689,6 +702,7 @@ public class ConversationCompactor {
                             .content(newBlocks)
                             .metadata(msg.getMetadata())
                             .timestamp(msg.getTimestamp())
+                            .usage(msg.getUsage())
                             .build());
         }
 
