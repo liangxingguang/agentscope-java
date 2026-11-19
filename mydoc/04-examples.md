@@ -1,620 +1,673 @@
 # 示例代码说明
 
-本文档详细介绍 agentscope-examples 中的各个示例，帮助你理解如何使用 AgentScope-Java。
+本文档介绍 `agentscope-examples` 下的**真实**示例结构与运行方式。
 
-## 示例概览
+> **重要**：v1 文档中的 `agentscope-examples/quickstart` 模块、`ExampleUtils` 工具类、
+> `HookExample`、`SessionExample`、`ToolGroupExample`（旧写法）、`RAGFlowRAGExample`
+> 等路径/命名已变化。当前示例集中在 **`agentscope-examples/documentation`**，
+> 包名统一为 `io.agentscope.examples.documentation2.*`。
 
-| 示例 | 难度 | 主要功能 | 核心知识点 |
-|------|------|----------|------------|
-| BasicChatExample | ⭐ | 基础对话 | Agent 创建、Model 配置 |
-| ToolCallingExample | ⭐⭐ | 工具调用 | @Tool 注解、Toolkit |
-| StructuredOutputExample | ⭐⭐ | 结构化输出 | Schema 定义、类型转换 |
-| HookExample | ⭐⭐ | 钩子系统 | Hook 接口、事件处理 |
-| SessionExample | ⭐⭐ | 会话管理 | JsonSession、持久化 |
-| ToolGroupExample | ⭐⭐⭐ | 工具组 | ToolGroup、动态激活 |
-| McpToolExample | ⭐⭐⭐ | MCP 集成 | MCP 协议、外部工具 |
-| InterruptionExample | ⭐⭐⭐ | 中断机制 | InterruptedException |
+## 0. 运行前准备
+
+```bash
+# 仓库根目录执行；先把所有模块装进本地仓库
+mvn -B -T1 install -DskipTests
+
+export DASHSCOPE_API_KEY=sk-xxxxxxxx      # Linux/macOS
+# Windows CMD: set DASHSCOPE_API_KEY=sk-xxxxxxxx
+```
+
+统一运行方式：
+
+```bash
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.<子包>.<类名>
+```
+
+## 1. 示例总览
+
+| 子包 | 示例 | 讲解要点 | 难度 |
+|------|------|----------|------|
+| `quickstart` | `BasicChatExample` | Agent 创建、`model("dashscope:qwen-plus")`、`streamEvents` | ⭐ |
+| `quickstart` | `UserIsolatedMultiTurnsExample` | `RuntimeContext` 用户/会话隔离、多轮对话 | ⭐⭐ |
+| `tool` | `ToolCallingExample` | `@Tool` / `@ToolParam`、`Toolkit.registerTool` | ⭐⭐ |
+| `tool` | `ToolGroupExample` | `createToolGroup` + `enableMetaTool` 自动激活工具组 | ⭐⭐⭐ |
+| `tool` | `ToolBaseExample` | 实现 `ToolBase` 接口定义工具 | ⭐⭐ |
+| `tool` | `ToolCallingWithConverterExample` | 自定义 `ToolResultConverter` | ⭐⭐ |
+| `tool` | `ToolExecutionContextExample` | `ToolExecutionContext` 透传 | ⭐⭐ |
+| `tool` | `ToolSearchExample` | 工具搜索 / 延迟加载 | ⭐⭐⭐ |
+| `tool` | `RoutingByToolCallsExample` | 依据工具调用做路由 | ⭐⭐⭐ |
+| `tool` | `PermissionContextExample` | 权限上下文基础用法 | ⭐⭐ |
+| `structuredoutput` | `StructuredOutputExample` | `call(msg, Class)` + `getStructuredData` | ⭐⭐ |
+| `structuredoutput` | `StructuredOutputFallbackExample` | 结构化输出降级策略 | ⭐⭐⭐ |
+| `streaming` | `StreamingConsoleExample` | 控制台流式输出 | ⭐⭐ |
+| `streaming` | `AgentEventStreamExample` | 32 种事件的完整遍历 | ⭐⭐ |
+| `streaming` | `ToolStreamingExample` | 工具参数/结果增量流 | ⭐⭐⭐ |
+| `streaming` | `StreamingWebExample` | SSE/Web 场景 | ⭐⭐⭐ |
+| `state` | `StateExample` | `JsonFileAgentStateStore` + 会话恢复 | ⭐⭐ |
+| `state` | `StateAutoSaveExample` | 状态自动保存/加载 | ⭐⭐ |
+| `middleware` | `CustomizedMiddlewareExample` | `MiddlewareBase` 生命周期监控 | ⭐⭐ |
+| `middleware` | `ModelCallMiddlewareExample` | 拦截单次模型调用 | ⭐⭐⭐ |
+| `middleware` | `SystemPromptMiddlewareExample` | 改写系统提示词 | ⭐⭐ |
+| `model` | `ModelRegistryExample` | `model("provider:id")` 解析 | ⭐⭐ |
+| `model` | `ModelTransportExample` | 自定义 HTTP 传输/代理 | ⭐⭐⭐ |
+| `mcp` | `McpStdioExample` | MCP stdio 子进程 | ⭐⭐⭐ |
+| `mcp` | `McpSseExample` | MCP SSE 传输 | ⭐⭐⭐ |
+| `mcp` | `McpStreamableHttpExample` | MCP Streamable HTTP | ⭐⭐⭐ |
+| `multimodal` | `VisionExample` | 图片输入 | ⭐⭐ |
+| `multimodal` | `DocumentExample` | 文档输入 | ⭐⭐ |
+| `multimodal` | `MultiModalToolExample` | 多模态工具返回 | ⭐⭐⭐ |
+| `hitl` | `InterruptionExample` | `agent.interrupt()` + 中间件观测 | ⭐⭐⭐ |
+| `hitl` | `PermissionHITLExample` | 三态权限引擎 + 人工确认 + `DONT_ASK` 无头模式 | ⭐⭐⭐ |
+| `hitl` | `HookStopAgentExample` | 在流程中主动停止 Agent | ⭐⭐⭐ |
+| `skill` | `AgentSkillExample` | `FileSystemSkillRepository` + `.skillRepository(...)` | ⭐⭐ |
+| `skill` | `SkillWithToolGroupExample` | 技能绑定工具组 | ⭐⭐⭐ |
+| `skill` | `GitSkillRepositoryExample` | Git 仓库技能 | ⭐⭐⭐ |
+| `rag` | `ApplicationLayerRagExample` | **v2 推荐**：应用层检索 + 拼 prompt | ⭐⭐ |
+| `context` | `RuntimeContextExample` | `RuntimeContext` 各字段作用 | ⭐⭐ |
+| `judge` | `OpenAIDecisionsExample` 等 5 个 | 文本/图像分类与路由中间件 | ⭐⭐⭐ |
+| `harness/*` | 13 个示例 | 工作区、记忆压缩、Plan Mode、子 Agent、Channel、异步工具 | ⭐⭐⭐ |
+| `agui` | `AguiExampleApplication` | AG-UI 协议（Spring Boot 应用） | ⭐⭐⭐ |
+| `copilotkit` | `CopilotKitExampleApplication` | CopilotKit 集成（Spring Boot 应用） | ⭐⭐⭐ |
+
+其他子模块：
+
+| 模块 | 内容 |
+|------|------|
+| `agentscope-examples/jev` | JEV 评估/判定示例与基准程序 |
+| `agentscope-examples/durable` | Durable 集成（含 Spring Boot） |
+| `agentscope-examples/agents/agentscope-chat` | HarnessAgent + Durable 可恢复聊天应用，含前端 |
+| `agentscope-examples/agents/agentscope-codingagent` | 编码 Agent |
+| `agentscope-examples/agents/agentscope-dataagent` | 数据分析 Agent |
+| `agentscope-examples/agents/agentscope-paw` | 示例 Agent 应用 |
 
 ---
 
-## 1. BasicChatExample（基础对话）
+## 2. BasicChatExample（基础对话）
 
-### 功能说明
-最简单的示例，展示如何创建一个能对话的 AI Agent。
+### 功能
+最简单的 Agent：创建 → 流式对话 → 增量打印文本。
 
-### 核心代码
+### 核心代码（真实源码）
 
 ```java
-public class BasicChatExample {
-    public static void main(String[] args) {
-        // 获取 API Key
-        String apiKey = ExampleUtils.getDashScopeApiKey();
-
-        // 创建 Agent
-        ReActAgent agent = ReActAgent.builder()
+ReActAgent agent =
+        ReActAgent.builder()
                 .name("Assistant")
-                .sysPrompt("你是一个友好的 AI 助手。")
-                .model(DashScopeChatModel.builder()
-                        .apiKey(apiKey)
-                        .modelName("qwen-plus")
-                        .stream(true)              // 启用流式输出
-                        .enableThinking(true)      // 启用思考过程
-                        .formatter(new DashScopeChatFormatter())
-                        .build())
-                .memory(new InMemoryMemory())
+                .sysPrompt("You are a helpful AI assistant. Be friendly and concise.")
+                .model("dashscope:qwen-plus")
                 .toolkit(new Toolkit())
                 .build();
 
-        // 开始对话
-        ExampleUtils.startChat(agent);
-    }
-}
+Msg userMsg = new UserMessage(input.trim());
+agent.streamEvents(userMsg)
+        .doOnNext(event -> {
+            if (event instanceof TextBlockDeltaEvent e) {
+                System.out.print(e.getDelta());
+            }
+        })
+        .blockLast();
 ```
 
-### 运行方式
+### 运行
 
 ```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.BasicChatExample"
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.quickstart.BasicChatExample
 ```
 
 ### 学习要点
+1. `model("dashscope:qwen-plus")` 由 `ModelRegistry` 自动解析 provider
+2. **不需要** `.memory(...)`
+3. 流式输出用 `streamEvents()` + `TextBlockDeltaEvent`
 
-1. **Agent 构建器模式**：使用 `builder()` 链式配置
-2. **Model 配置**：DashScope 模型的基本配置
-3. **流式输出**：`stream(true)` 让响应逐字显示
-4. **思考过程**：`enableThinking(true)` 显示 AI 推理过程
-
-### 代码调用链
+### 调用链
 
 ```
 main()
-  └── ExampleUtils.getDashScopeApiKey()  // 获取 API Key
-  └── ReActAgent.builder()               // 创建 Builder
-        ├── .name()
-        ├── .sysPrompt()
-        ├── .model()
-        │     └── DashScopeChatModel.builder()
-        ├── .memory()
-        └── .build()                     // 构建 Agent
-  └── ExampleUtils.startChat(agent)      // 开始交互
-        └── Scanner.nextLine()           // 读取用户输入
-        └── agent.call(msg)              // 调用 Agent
-              └── ReActAgent.doCall()    // 内部实现
-                    └── reasoning()      // 思考阶段
-                    └── acting()         // 行动阶段
+  └── ReActAgent.builder()...build()
+  └── agent.streamEvents(UserMessage)
+        └── ReActAgent.CallExecution.doCallInner()
+              └── reasoning()  → Model.stream() → Flux<ChatResponse>
+              └── acting()     → Toolkit.callTool()（如有工具调用）
+        └── Flux<AgentEvent> → TextBlockDeltaEvent.getDelta()
 ```
 
 ---
 
-## 2. ToolCallingExample（工具调用）
-
-### 功能说明
-展示如何让 AI 调用自定义工具。
+## 3. ToolCallingExample（工具调用）
 
 ### 核心代码
 
 ```java
-public class ToolCallingExample {
-    public static void main(String[] args) {
-        String apiKey = ExampleUtils.getDashScopeApiKey();
+Toolkit toolkit = new Toolkit();
+toolkit.registerTool(new SimpleTools());
 
-        // 创建工具箱并注册工具
-        Toolkit toolkit = new Toolkit();
-        toolkit.registerTool(new SimpleTools());
-
-        // 创建 Agent
-        ReActAgent agent = ReActAgent.builder()
+ReActAgent agent =
+        ReActAgent.builder()
                 .name("ToolAgent")
-                .sysPrompt("你是一个有工具的助手。需要时使用工具回答问题。")
-                .model(DashScopeChatModel.builder()
-                        .apiKey(apiKey)
-                        .modelName("qwen-max")
-                        .build())
-                .toolkit(toolkit)          // 配置工具箱
-                .memory(new InMemoryMemory())
-                .build();
-
-        ExampleUtils.startChat(agent);
-    }
-
-    // 工具定义
-    public static class SimpleTools {
-        
-        @Tool(name = "get_current_time", description = "获取指定时区的当前时间")
-        public String getCurrentTime(
-                @ToolParam(name = "timezone", description = "时区，如 Asia/Tokyo")
-                String timezone) {
-            // 实现逻辑
-        }
-
-        @Tool(name = "calculate", description = "计算数学表达式")
-        public String calculate(
-                @ToolParam(name = "expression", description = "数学表达式")
-                String expression) {
-            // 实现逻辑
-        }
-
-        @Tool(name = "search", description = "搜索信息")
-        public String search(
-                @ToolParam(name = "query", description = "搜索关键词")
-                String query) {
-            // 实现逻辑
-        }
-    }
-}
-```
-
-### 运行方式
-
-```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.ToolCallingExample"
-```
-
-### 体验建议
-
-输入以下问题，观察 AI 如何选择和调用工具：
-- "东京现在几点？" → 调用 `get_current_time`
-- "123 * 456 等于多少？" → 调用 `calculate`
-- "搜索一下人工智能" → 调用 `search`
-
-### 代码调用链
-
-```
-用户输入: "东京现在几点？"
-    │
-    ▼
-ReActAgent.call()
-    │
-    ▼
-reasoning() ──────────────────────────────────
-    │                                         │
-    │  AI 思考: "我需要查询东京时间"            │
-    │  AI 决定: 调用 get_current_time 工具     │
-    │                                         │
-    ▼                                         │
-acting()                                      │
-    │                                         │
-    ▼                                         │
-ToolExecutor.execute()                        │
-    │                                         │
-    ├── 解析参数: timezone="Asia/Tokyo"       │
-    │                                         │
-    ▼                                         │
-SimpleTools.getCurrentTime("Asia/Tokyo")      │
-    │                                         │
-    ├── 返回: "东京时间: 2024-01-15 14:30:00"  │
-    │                                         │
-    ▼                                         │
-reasoning() (第二轮) ─────────────────────────┘
-    │
-    │  AI 思考: "我已经获得了东京时间"
-    │  AI 决定: 直接回答
-    │
-    ▼
-返回结果: "东京现在时间是 2024-01-15 14:30:00"
-```
-
----
-
-## 3. StructuredOutputExample（结构化输出）
-
-### 功能说明
-让 AI 返回结构化的 JSON 数据，方便程序处理。
-
-### 核心代码
-
-```java
-public class StructuredOutputExample {
-    public static void main(String[] args) {
-        String apiKey = ExampleUtils.getDashScopeApiKey();
-
-        ReActAgent agent = ReActAgent.builder()
-                .name("Extractor")
-                .model(DashScopeChatModel.builder()
-                        .apiKey(apiKey)
-                        .modelName("qwen-plus")
-                        .build())
-                .memory(new InMemoryMemory())
-                .toolkit(new Toolkit())
-                .build();
-
-        // 定义输出结构
-        @Data
-        class ProductRequirements {
-            private String productType;
-            private String brand;
-            private int minRam;
-            private double maxBudget;
-            private List<String> features;
-        }
-
-        // 提取结构化数据
-        String input = "我想买一台苹果笔记本，至少16GB内存，预算2万以内，要轻便易携带";
-        
-        ProductRequirements result = agent.call(
-            Msg.builder().textContent(input).build(),
-            ProductRequirements.class  // 指定输出类型
-        ).block().getStructuredData(ProductRequirements.class);
-
-        System.out.println("产品类型: " + result.getProductType());
-        System.out.println("品牌: " + result.getBrand());
-        System.out.println("内存: " + result.getMinRam() + "GB");
-        System.out.println("预算: " + result.getMaxBudget());
-    }
-}
-```
-
-### 运行方式
-
-```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.StructuredOutputExample"
-```
-
-### 学习要点
-
-1. **Schema 自动生成**：根据 Java 类自动生成 JSON Schema
-2. **类型安全**：返回强类型对象，无需手动解析 JSON
-3. **自动校验**：AI 输出不符合 Schema 时自动重试
-
----
-
-## 4. HookExample（钩子系统）
-
-### 功能说明
-展示如何使用 Hook 监控和干预 Agent 执行过程。
-
-### 核心代码
-
-```java
-public class HookExample {
-    public static void main(String[] args) {
-        String apiKey = ExampleUtils.getDashScopeApiKey();
-
-        ReActAgent agent = ReActAgent.builder()
-                .name("MonitoredAgent")
-                .model(DashScopeChatModel.builder()
-                        .apiKey(apiKey)
-                        .modelName("qwen-plus")
-                        .build())
-                .memory(new InMemoryMemory())
-                .toolkit(new Toolkit())
-                .hook(new LoggingHook())     // 添加日志钩子
-                .hook(new ProgressHook())    // 添加进度钩子
-                .build();
-
-        ExampleUtils.startChat(agent);
-    }
-
-    // 日志钩子
-    static class LoggingHook implements Hook {
-        @Override
-        public Mono<PreReasoningEvent> onEvent(PreReasoningEvent event) {
-            System.out.println("[LOG] 开始思考...");
-            return Mono.just(event);
-        }
-
-        @Override
-        public Mono<PostReasoningEvent> onEvent(PostReasoningEvent event) {
-            System.out.println("[LOG] 思考完成");
-            return Mono.just(event);
-        }
-    }
-
-    // 进度钩子
-    static class ProgressHook implements Hook {
-        @Override
-        public Mono<ReasoningChunkEvent> onEvent(ReasoningChunkEvent event) {
-            System.out.print(".");  // 显示进度点
-            return Mono.just(event);
-        }
-    }
-}
-```
-
-### 运行方式
-
-```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.HookExample"
-```
-
-### 学习要点
-
-1. **Hook 接口**：实现 `Hook` 接口，重写需要的事件方法
-2. **事件类型**：不同阶段触发不同事件
-3. **事件修改**：可以修改事件内容，影响后续流程
-
----
-
-## 5. SessionExample（会话管理）
-
-### 功能说明
-展示如何持久化对话历史，支持跨会话恢复。
-
-### 核心代码
-
-```java
-public class SessionExample {
-    public static void main(String[] args) {
-        String apiKey = ExampleUtils.getDashScopeApiKey();
-
-        // 创建或加载会话
-        System.out.print("输入会话ID: ");
-        String sessionId = new Scanner(System.in).nextLine();
-        
-        Session session = new JsonSession("sessions/" + sessionId + ".json");
-        session.load();  // 加载历史
-
-        // 创建 Agent
-        ReActAgent agent = ReActAgent.builder()
-                .name("PersistentAgent")
-                .model(DashScopeChatModel.builder()
-                        .apiKey(apiKey)
-                        .modelName("qwen-plus")
-                        .build())
-                .memory(session.getMemory())  // 使用会话的 Memory
-                .toolkit(new Toolkit())
-                .build();
-
-        // 对话
-        ExampleUtils.startChat(agent);
-
-        // 保存会话
-        session.save();
-    }
-}
-```
-
-### 运行方式
-
-```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.SessionExample"
-```
-
-### 体验流程
-
-```
-第一次运行:
-输入会话ID: alice
-You: 我叫小明，我喜欢吃披萨
-AI: 你好小明！很高兴认识你。
-
-第二次运行:
-输入会话ID: alice
-You: 我叫什么名字？我喜欢吃什么？
-AI: 你叫小明，你喜欢吃披萨。  # AI 记住了之前的信息！
-```
-
----
-
-## 6. ToolGroupExample（工具组）
-
-### 功能说明
-展示如何将工具分组，让 AI 按需激活。
-
-### 核心代码
-
-```java
-public class ToolGroupExample {
-    public static void main(String[] args) {
-        Toolkit toolkit = new Toolkit();
-
-        // 创建工具组
-        ToolGroup mathGroup = new ToolGroup("math_ops", "数学运算");
-        mathGroup.addTool(new MathTools());
-
-        ToolGroup networkGroup = new ToolGroup("network_ops", "网络操作");
-        networkGroup.addTool(new NetworkTools());
-
-        ToolGroup fileGroup = new ToolGroup("file_ops", "文件操作");
-        fileGroup.addTool(new FileTools());
-
-        // 注册工具组
-        toolkit.registerGroup(mathGroup);
-        toolkit.registerGroup(networkGroup);
-        toolkit.registerGroup(fileGroup);
-
-        // 默认所有组都是 INACTIVE
-        // Agent 会通过 meta-tool 自动激活需要的组
-
-        ReActAgent agent = ReActAgent.builder()
-                .name("SmartAgent")
-                .model(model)
+                .sysPrompt("You are a helpful assistant with access to tools. "
+                        + "Use tools when needed to answer questions accurately.")
+                .model("dashscope:qwen-max")
                 .toolkit(toolkit)
-                .enableMetaTool(true)  // 启用 meta-tool
+                .middleware(new AgentTraceMiddleware())
                 .build();
+```
+
+工具定义：
+
+```java
+public static class SimpleTools {
+
+    @Tool(name = "get_current_time", description = "获取指定时区当前时间")
+    public String getCurrentTime(
+            @ToolParam(name = "timezone", description = "时区，如 Asia/Tokyo")
+            String timezone) {
+        return ZonedDateTime.now(ZoneId.of(timezone))
+                .format(DateTimeFormatter.ISO_ZONED_DATE_TIME);
     }
+
+    @Tool(name = "calculate", description = "计算简单数学表达式")
+    public String calculate(@ToolParam(name = "expression") String expression) { ... }
+
+    @Tool(name = "search", description = "模拟搜索")
+    public String search(@ToolParam(name = "query") String query) { ... }
 }
 ```
 
-### 运行方式
+### 运行
 
 ```bash
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.ToolGroupExample"
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.tool.ToolCallingExample
 ```
 
 ### 学习要点
-
-1. **ToolGroup**：将相关工具组织在一起
-2. **激活状态**：只有激活的组才能被调用
-3. **Meta-tool**：让 AI 自动决定激活哪些组
+- 一个 `@Tool` 方法 = 一个工具；`description` 是模型选择工具的唯一依据，务必写清"何时使用"
+- 支持 `Mono<String>` 异步返回、`ToolEmitter` 进度流、`converter` 自定义转换
 
 ---
 
-## 7. McpToolExample（MCP 工具）
-
-### 功能说明
-展示如何使用 MCP（Model Context Protocol）协议集成外部工具。
+## 4. ToolGroupExample（工具组 + 元工具）
 
 ### 核心代码
 
 ```java
-public class McpToolExample {
-    public static void main(String[] args) {
-        Toolkit toolkit = new Toolkit();
+Toolkit toolkit = new Toolkit();
 
-        // 创建 MCP 客户端
-        McpClient mcpClient = McpClient.builder()
-                .command("npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp")
-                .build();
+toolkit.createToolGroup("file_ops", "File system operations (read, write, list)", false);
+toolkit.registration().tool(new FileTools()).group("file_ops").apply();
 
-        // 注册 MCP 工具
-        toolkit.registerMcpTools(mcpClient);
+toolkit.createToolGroup("math_ops", "Mathematical calculations (factorial, is_prime)", false);
+toolkit.registration().tool(new MathTools()).group("math_ops").apply();
 
-        ReActAgent agent = ReActAgent.builder()
-                .name("McpAgent")
-                .model(model)
-                .toolkit(toolkit)
-                .build();
+toolkit.createToolGroup("network_ops", "Network operations (ping, dns_lookup)", false);
+toolkit.registration().tool(new NetworkTools()).group("network_ops").apply();
 
-        // 现在 Agent 可以使用文件系统工具
-        // 如: list_files, read_file, write_file 等
+ReActAgent agent = ReActAgent.builder()
+        .name("GroupAgent")
+        .model("dashscope:qwen-plus")
+        .toolkit(toolkit)
+        .enableMetaTool(true)     // 让模型自己开关工具组
+        .build();
+```
+
+### 学习要点
+1. 组默认 `active=false`，初始对模型不可见
+2. `enableMetaTool(true)` 后，模型通过 `reset_equipped_tools` 元工具激活需要的组
+3. 也可用 `toolkit.setActiveGroups(List.of("math_ops"))` 由代码激活
+
+### 运行
+
+```bash
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.tool.ToolGroupExample
+```
+
+---
+
+## 5. StructuredOutputExample（结构化输出）
+
+### 核心代码（真实源码）
+
+```java
+Msg msg = agent.call(userMsg, ProductRequirements.class).block();
+ProductRequirements result = msg.getStructuredData(ProductRequirements.class);
+
+System.out.println(result.productType);
+System.out.println(result.minRam);
+```
+
+`ProductRequirements` 可以是普通类或 record，框架自动生成 JSON Schema 并做校验/重试。
+
+### 运行
+
+```bash
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.structuredoutput.StructuredOutputExample
+```
+
+### 学习要点
+- `call(msgs, Class)` → `Msg.getStructuredData(Class)`
+- 也支持 `call(msgs, JsonNode schema)` 传自定义 Schema
+- 模型不支持原生结构化输出时，框架会走提示词提醒 + 校验重试（见 `StructuredOutputReminder`）
+
+---
+
+## 6. Middleware（中间件）示例
+
+### 三个示例对比
+
+| 示例 | 切片 | 用途 |
+|------|------|------|
+| `CustomizedMiddlewareExample` | `onAgent` / `onReasoning` / `onActing` | 全生命周期日志 |
+| `ModelCallMiddlewareExample` | `onModelCall` | 拦截模型请求/响应 |
+| `SystemPromptMiddlewareExample` | `onSystemPrompt` | 动态改写系统提示词 |
+
+### 核心代码
+
+```java
+static class MonitoringMiddleware implements MiddlewareBase {
+
+    @Override
+    public Set<ExtensionPoint> activePoints() {
+        return EnumSet.of(
+                ExtensionPoint.ON_AGENT, ExtensionPoint.ON_REASONING, ExtensionPoint.ON_ACTING);
+    }
+
+    @Override
+    public Flux<AgentEvent> onAgent(
+            Agent agent, RuntimeContext ctx, AgentInput input,
+            Function<AgentInput, Flux<AgentEvent>> next) {
+        System.out.println("[MW] onAgent START, messages=" + input.msgs().size());
+        return next.apply(input).doOnComplete(() -> System.out.println("[MW] onAgent END"));
     }
 }
 ```
 
-### 运行方式
+### 运行
 
 ```bash
-# 先安装 MCP 服务器
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.middleware.CustomizedMiddlewareExample
+```
+
+> **迁移提示**：v1 的 `HookExample` 已删除，等价能力见
+> `CustomizedMiddlewareExample`（其 Javadoc 里列出了 Hook → Middleware 的逐条映射）。
+
+---
+
+## 7. StateExample（会话持久化）
+
+### 核心代码（真实源码）
+
+```java
+Path sessionPath =
+        Paths.get(System.getProperty("user.home"), ".agentscope", "examples", "sessions");
+AgentStateStore stateStore = new JsonFileAgentStateStore(sessionPath);
+
+ReActAgent agent =
+        ReActAgent.builder()
+                .name("Assistant")
+                .sysPrompt("You are a helpful AI assistant with persistent memory.")
+                .toolkit(new Toolkit())
+                .stateStore(stateStore)          // 自动加载/保存
+                .defaultSessionId(sessionId)
+                .model("dashscope:qwen-max")
+                .build();
+
+// 读取已恢复的历史
+int ctxSize = agent.getAgentState().getContext().size();
+```
+
+### 与 v1 的差异（示例 Javadoc 原文）
+
+| v1 | v2 |
+|---|---|
+| `legacy.session.JsonFileAgentStateStore` | `io.agentscope.core.state.JsonFileAgentStateStore` |
+| `legacy.memory.InMemoryMemory` + `.memory()` | 完全移除，历史在 `AgentState` |
+| `agent.loadFrom(session, id)` / `saveTo(...)` | Builder 上 `.stateStore(store)` + `.defaultSessionId(id)`，自动读写 |
+| `agent.getMemory().getMessages()` | `agent.getAgentState().getContext()` |
+
+### 运行
+
+```bash
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.state.StateExample
+```
+
+---
+
+## 8. Streaming（事件流）示例
+
+### 核心代码
+
+```java
+agent.streamEvents(userMsg)
+        .doOnNext(event -> {
+            switch (event.getType()) {
+                case TEXT_BLOCK_DELTA ->
+                        System.out.print(((TextBlockDeltaEvent) event).getDelta());
+                case THINKING_BLOCK_DELTA ->
+                        System.out.print(((ThinkingBlockDeltaEvent) event).getDelta());
+                case TOOL_CALL_START ->
+                        System.out.printf("%n[TOOL] %s%n",
+                                ((ToolCallStartEvent) event).getToolCallName());
+                case TOOL_PROGRESS -> System.out.printf("%n[PROGRESS] %s%n", event);
+                case AGENT_RESULT ->
+                        System.out.printf("%n[DONE] %s%n",
+                                ((AgentResultEvent) event).getResult().getTextContent());
+                default -> { }
+            }
+        })
+        .blockLast();
+```
+
+### 运行
+
+```bash
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.streaming.AgentEventStreamExample
+```
+
+---
+
+## 9. MCP 集成（3 种传输）
+
+| 示例 | 传输 | 依赖 |
+|------|------|------|
+| `McpStdioExample` | 子进程 stdin/stdout | `npx @modelcontextprotocol/server-filesystem` |
+| `McpSseExample` | SSE | 远程 MCP 服务 |
+| `McpStreamableHttpExample` | Streamable HTTP | 远程 MCP 服务 |
+
+### 核心代码（真实源码）
+
+```java
+McpClientWrapper mcpClient =
+        McpClientBuilder.create("filesystem")
+                .stdioTransport("npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp")
+                .buildAsync()
+                .block();
+
+Toolkit toolkit = new Toolkit();
+toolkit.registerMcpClient(mcpClient).block();
+
+ReActAgent agent = ReActAgent.builder()
+        .name("FilesystemAgent")
+        .sysPrompt("You are a filesystem assistant. Use the available MCP tools.")
+        .model("dashscope:qwen-max")
+        .toolkit(toolkit)
+        .build();
+```
+
+### 运行
+
+```bash
 npm install -g @modelcontextprotocol/server-filesystem
 
-# 运行示例
-mvn exec:java -Dexec.mainClass="io.agentscope.examples.quickstart.McpToolExample"
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.mcp.McpStdioExample
+```
+
+> **注意**：v1 文档里的 `McpClient.builder().command(...)` + `toolkit.registerMcpTools(client)`
+> 已不存在；现在是 `McpClientBuilder.create(name).stdioTransport(...)` +
+> `toolkit.registerMcpClient(wrapper)`（返回 `Mono<Void>`）。
+
+---
+
+## 10. HITL（人机协同）示例
+
+### PermissionHITLExample
+
+```java
+PermissionContextState permCtx =
+        PermissionContextState.builder()
+                .mode(PermissionMode.DEFAULT)
+                .addAllowRule("safe_read",
+                        new PermissionRule("safe_read", null, PermissionBehavior.ALLOW, "policy"))
+                .addAskRule("dangerous_delete",
+                        new PermissionRule("dangerous_delete", null, PermissionBehavior.ASK, "policy"))
+                .build();
+
+ReActAgent agent = ReActAgent.builder()
+        .permissionContext(permCtx)
+        .build();
+```
+
+流程：
+1. 用户消息触发需要确认的工具 → Agent 提前返回，`getGenerateReason() == PERMISSION_ASKING`
+2. 应用展示待确认的工具调用并收集用户决定
+3. 应用发送后续消息恢复或取消
+
+```bash
+# 交互模式（会询问确认）
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.hitl.PermissionHITLExample
+
+# 无头模式（ASK 自动降级为 DENY）
+mvn exec:java -pl agentscope-examples/documentation \
+    -Dexec.mainClass=io.agentscope.examples.documentation2.hitl.PermissionHITLExample \
+    -Dexec.args="--headless"
+```
+
+### InterruptionExample
+
+```java
+// 长任务执行中主动中断
+agent.interrupt();
 ```
 
 ---
 
-## 8. RAG 示例
-
-### 功能说明
-展示如何使用 RAG（检索增强生成）让 AI 访问外部知识库。
-
-### 支持的 RAG 实现
+## 11. Skill（技能）示例
 
 | 示例 | 说明 |
 |------|------|
-| PgVectorRAGExample | 使用 PostgreSQL + pgvector |
-| HayStackRAGExample | 使用 Haystack 框架 |
-| DifyRAGExample | 使用 Dify 平台 |
-| RAGFlowRAGExample | 使用 RAGFlow |
+| `AgentSkillExample` | 用 `FileSystemSkillRepository` + `.skillRepository(...)` 加载技能（示例注释明确写着这是 `SkillBox` 的非 legacy 替代） |
+| `SkillWithToolGroupExample` | 技能与工具组绑定，激活技能时按需启用工具 |
+| `GitSkillRepositoryExample` | 从 Git 仓库拉取 `SKILL.md` 技能集 |
 
-### 核心代码
+> `SkillBox` 属于旧路径：`Builder.skillBox(...)` 已 `@Deprecated(since = "2.0.0")`，
+> 类 Javadoc 声明「intended for internal use only」。新代码统一用 `skillRepository(...)`。
+
+技能以 Markdown 形式承载（含 front-matter 的 `name` / `description`），
+加载方式：
 
 ```java
-public class PgVectorRAGExample {
-    public static void main(String[] args) {
-        // 创建向量存储
-        VectorStore vectorStore = new PgVectorStore(
-            "jdbc:postgresql://localhost:5432/agentscope",
-            "username",
-            "password"
-        );
+// 方式一：工作区技能（HarnessAgent 自动扫描 workspace/skills/<name>/SKILL.md）
+HarnessAgent.builder()
+        .workspace(workspace)
+        .build();
 
-        // 创建知识库
-        Knowledge knowledge = Knowledge.builder()
-                .name("产品文档")
-                .documents(loadDocuments())
-                .embeddingModel(embeddingModel)
-                .vectorStore(vectorStore)
-                .build();
-
-        // 创建 Agent
-        ReActAgent agent = ReActAgent.builder()
-                .name("KnowledgeAgent")
-                .model(model)
-                .knowledge(knowledge)
-                .ragMode(RAGMode.GENERIC)
-                .build();
-    }
-}
+// 方式二：显式仓库（推荐）
+HarnessAgent.builder()
+        .skillRepository(new ClasspathSkillRepository("skills"))
+        .build();
 ```
 
 ---
 
-## 9. Pipeline 示例
+## 12. RAG 示例
 
-### 功能说明
-展示如何使用 Pipeline 组合多个 Agent。
+> RAG 有三种编排位置：**A. 框架层 Generic（自动 hook）**、**B. 框架层 Agentic（模型调工具）**、
+> **C. 应用层（v2 推荐）**。三者的架构图、对照表与选型理由见
+> [核心概念 - RAG](./03-concepts.md#12-rag检索增强生成)。本节只讲示例代码。
 
-### SequentialPipelineExample
+### ApplicationLayerRagExample（v2 推荐，即方案 C）
 
-顺序执行多个 Agent：
+v2 把检索留在应用层，示例用三步显式表达：
 
 ```java
-SequentialPipeline pipeline = new SequentialPipeline();
-pipeline.addAgent(researchAgent);   // 第一步：研究
-pipeline.addAgent(writingAgent);    // 第二步：写作
-pipeline.addAgent(reviewAgent);     // 第三步：审核
+List<KnowledgeDocument> matches = retriever.retrieve(question, 2);
 
-Msg result = pipeline.execute(userMsg).block();
+String context = matches.stream()
+        .map(d -> d.id() + ": " + d.content())
+        .collect(Collectors.joining("\n"));
+
+ReActAgent agent = ReActAgent.builder()
+        .name("SupportAssistant")
+        .sysPrompt("You are a customer-support assistant. Answer only with the retrieved context.")
+        .model("dashscope:qwen-plus")
+        .build();
+
+agent.streamEvents(new UserMessage("已知资料：\n" + context + "\n\n问题：" + question))
+        .doOnNext(...)
+        .blockLast();
 ```
 
-### FanoutPipelineExample
+示例用内存关键字检索，**不需要向量库或 embedding 服务**；生产环境替换
+`KeywordRetriever.retrieve(...)` 即可，prompt 组装与 Agent 调用不变。
 
-并行执行多个 Agent：
+### 1.x 兼容：RAG 扩展模块
+
+| 模块 | Knowledge 实现 |
+|------|----------------|
+| `agentscope-extensions-rag-simple` | `SimpleKnowledge`（自带 reader/splitter/embedding/向量库） |
+| `agentscope-extensions-rag-dify` | `DifyKnowledge` |
+| `agentscope-extensions-rag-ragflow` | `RAGFlowKnowledge` |
+| `agentscope-extensions-rag-haystack` | `HayStackKnowledge` |
+| `agentscope-extensions-rag-bailian` | `BailianKnowledge` |
 
 ```java
-FanoutPipeline pipeline = new FanoutPipeline();
-pipeline.addAgent(weatherAgent);    // 并行查天气
-pipeline.addAgent(newsAgent);       // 并行查新闻
-pipeline.addAgent(stockAgent);      // 并行查股票
+ReActAgent.builder()
+        .knowledge(knowledge)        // Knowledge 接口在 2.0.0 起已 @Deprecated
+        .ragMode(RAGMode.GENERIC)
+        .build();
+```
 
-List<Msg> results = pipeline.execute(userMsg).block();
+向量库支持：`InMemoryStore`、`PgVectorStore`、`MilvusStore`、`QdrantStore`、`ElasticsearchStore`；
+Embedding 支持：DashScope（文本/多模态）、OpenAI、Ollama。
+
+---
+
+## 13. Harness 示例（13 个）
+
+| 示例 | 演示内容 |
+|------|----------|
+| `harness/workspace/WorkspaceSetupExample` | 工作区目录初始化（人格/记忆/技能） |
+| `harness/workspace/WorkspaceLocalShellExample` | 本地子进程 shell 工具 |
+| `harness/workspace/WorkspaceSandboxExample` | 沙箱执行 |
+| `harness/workspace/WorkspaceSharedStoreExample` | 共享存储文件系统 |
+| `harness/memory/MemoryCompactionExample` | 分层记忆与上下文压缩 |
+| `harness/context/ContextStatePersistenceExample` | 上下文状态持久化 |
+| `harness/planmode/PlanModeManualExample` | 手动进入 Plan Mode |
+| `harness/planmode/PlanModeAutoExample` | 自动 Plan Mode |
+| `harness/subagent/SubagentStreamingExample` | 子 Agent 事件转发到父流 |
+| `harness/subagent/SubagentSendDirectlyExample` | `agent_send` 直接投递 |
+| `harness/async/AsyncToolExample` | 异步工具 |
+| `harness/async/AsyncSubagentExample` | 异步子 Agent |
+| `harness/async/AsyncWaitModeExample` | 异步等待模式 |
+| `harness/channel/ChannelSendExample` | Channel 发送消息 |
+| `harness/channel/GatewayMultiAgentExample` | 网关多 Agent 路由 |
+| `harness/skill/SkillCompositionExample` | 多层技能组合（代码/classpath/workspace） |
+
+### 子 Agent 声明（真实源码）
+
+```java
+HarnessAgent.builder()
+        .name("orchestrator")
+        .sysPrompt("You are an orchestrator. Spawn the researcher subagent to investigate.")
+        .model("dashscope:qwen-plus")
+        .subagent(
+                SubagentDeclaration.builder()
+                        .name("researcher")
+                        .description("Research specialist. Use when in-depth investigation is needed.")
+                        .inlineAgentsBody("You are a research assistant...")
+                        .persistSession(true)
+                        .build())
+        .stateStore(stateStore)
+        .build();
 ```
 
 ---
 
-## 10. 调试技巧
+## 14. 完整应用示例
 
-### 10.1 添加日志
+### agentscope-chat（HarnessAgent + Durable）
 
-```java
-// 在代码中添加日志
-private static final Logger log = LoggerFactory.getLogger(YourClass.class);
+可恢复聊天应用：持久化任务、排队、暂停/恢复、交互应答、SSE 重放。
 
-log.debug("当前消息数: {}", memory.getMessages().size());
-log.debug("工具调用: {}", toolUseBlock.getName());
+```bash
+mvn -B -T1 -pl agentscope-examples/agents/agentscope-chat -am package -DskipTests
+java -jar agentscope-examples/agents/agentscope-chat/target/agentscope-chat.jar
+# http://127.0.0.1:8087
 ```
 
-### 10.2 使用 IDEA 调试
+- 默认离线模型，**无需 API Key / 数据库 / Node.js**
+- 默认数据目录 `~/.agentscope/session-chat`（`durable/durable.db` + `durable/objects/`）
+- 可用 `CHAT_WORKSPACE` / `CHAT_PORT` 环境变量覆盖
 
-推荐断点位置：
+### jev（评估/判定）
 
-```java
-// ReActAgent.java
-
-// 思考阶段入口
-private Mono<Msg> reasoning(int iter, boolean ignoreMaxIters) {
-    // 断点：观察每次思考的输入
-}
-
-// 行动阶段入口
-private Mono<Msg> acting(int iter) {
-    // 断点：观察工具调用
-}
-
-// ToolExecutor.java
-
-// 工具执行
-public ToolResultBlock execute(ToolUseBlock toolUse) {
-    // 断点：观察工具参数和返回值
-}
+```bash
+mvn -pl agentscope-dependencies-bom,agentscope-distribution/agentscope-bom,agentscope-examples/jev \
+    -am install -DskipTests
+mvn -pl agentscope-examples/jev dependency:build-classpath \
+    -Dmdep.outputFile=jev-cp.txt
+java -cp "agentscope-examples/jev/target/classes:$(cat jev-cp.txt)" \
+     io.agentscope.examples.jev.JevHarnessExample
 ```
 
-### 10.3 查看消息内容
+默认使用合成响应，不需要密钥；真实模型调用需显式 `--live-jev` / `--live-qwen` / `--compare`。
+
+---
+
+## 15. 已移除的示例（迁移对照）
+
+| v1 示例 | 现状 |
+|---------|------|
+| `quickstart.BasicChatExample` | → `documentation2.quickstart.BasicChatExample` |
+| `quickstart.ToolCallingExample` | → `documentation2.tool.ToolCallingExample` |
+| `quickstart.StructuredOutputExample` | → `documentation2.structuredoutput.StructuredOutputExample` |
+| `quickstart.HookExample` | → `documentation2.middleware.CustomizedMiddlewareExample` |
+| `quickstart.SessionExample` | → `documentation2.state.StateExample` |
+| `quickstart.ToolGroupExample` | → `documentation2.tool.ToolGroupExample` |
+| `quickstart.McpToolExample` | → `documentation2.mcp.McpStdioExample` |
+| `quickstart.InterruptionExample` | → `documentation2.hitl.InterruptionExample` |
+| `PgVectorRAGExample` / `RAGFlowRAGExample` | → `documentation2.rag.ApplicationLayerRagExample` + RAG 扩展模块 |
+| `SequentialPipelineExample` / `FanoutPipelineExample` | **不存在**；用 Subagent / Harness 编排替代 |
+| `ExampleUtils` 工具类 | **已移除**，各示例自带输入输出逻辑 |
+
+---
+
+## 16. 调试技巧
+
+### 16.1 打印事件流
 
 ```java
-// 打印消息详情
+agent.streamEvents(msg)
+        .doOnNext(e -> System.out.println(e.getType() + " -> " + e))
+        .blockLast();
+```
+
+### 16.2 关键断点
+
+```java
+// ReActAgent（内部类 CallExecution）
+doCallInner(List<Msg> msgs)                    // 整体调用入口
+reasoning(int iter, boolean ignoreMaxIters)    // 每轮思考
+acting(int iter)                               // 工具执行
+```
+
+```java
+// Toolkit
+callTool(ToolCallParam param)                  // 工具执行入口
+```
+
+### 16.3 查看消息
+
+```java
 Msg msg = agent.call(userMsg).block();
-System.out.println("消息ID: " + msg.getId());
-System.out.println("角色: " + msg.getRole());
-System.out.println("内容: " + msg.getTextContent());
-System.out.println("元数据: " + msg.getMetadata());
+System.out.println("id=" + msg.getId());
+System.out.println("role=" + msg.getRole());
+System.out.println("text=" + msg.getTextContent());
+System.out.println("blocks=" + msg.getContent().size());
+System.out.println("reason=" + msg.getGenerateReason());
 ```
 
 ---
 
 ## 下一步
 
-- [开发指南](./05-development.md)：学习开发规范和最佳实践
-- [常见问题](./06-faq.md)：排查常见问题
+- [开发指南](./05-development.md)：开发规范与扩展开发
+- [常见问题](./06-faq.md)：问题排查
